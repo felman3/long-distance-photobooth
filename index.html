@@ -128,52 +128,54 @@
 
   <!-- The booth -->
   <section class="view booth" id="view-booth" hidden>
-    <p class="sign" id="sign">Booth open</p>
-    <p class="meet-badge" id="meet-badge" hidden></p>
+    <div class="booth-main">
+      <p class="sign" id="sign">Booth open</p>
+      <p class="meet-badge" id="meet-badge" hidden></p>
 
-    <div class="marquee" id="marquee">
-      <div class="frame" id="frame">
-        <canvas class="stage" id="stage" width="1200" height="800" aria-label="You both in one picture"></canvas>
-        <div class="half me" id="half-me">
-          <video id="vid-me" autoplay playsinline muted></video>
-          <span class="tag tag-me" id="tag-me"><span id="name-me">You</span><svg class="tag-muted" aria-label="Microphone off"><use href="#i-mic-off"/></svg></span>
-        </div>
-        <div class="half them" id="half-them">
-          <video id="vid-them" autoplay playsinline></video>
-          <div class="empty" id="them-empty">
-            <p id="them-empty-text">Waiting for the other person</p>
+      <div class="marquee" id="marquee">
+        <div class="frame" id="frame">
+          <canvas class="stage" id="stage" width="1200" height="800" aria-label="You both in one picture"></canvas>
+          <div class="half me" id="half-me">
+            <video id="vid-me" autoplay playsinline muted></video>
+            <span class="tag tag-me" id="tag-me"><span id="name-me">You</span><svg class="tag-muted" aria-label="Microphone off"><use href="#i-mic-off"/></svg></span>
           </div>
-          <button class="hear" id="hear" type="button" hidden>🔊 Tap to hear them</button>
-          <span class="tag tag-them" id="tag-them"><span id="name-them">Them</span><svg class="tag-muted" aria-label="Their microphone is off"><use href="#i-mic-off"/></svg></span>
+          <div class="half them" id="half-them">
+            <video id="vid-them" autoplay playsinline></video>
+            <div class="empty" id="them-empty">
+              <p id="them-empty-text">Waiting for the other person</p>
+            </div>
+            <button class="hear" id="hear" type="button" hidden>🔊 Tap to hear them</button>
+            <span class="tag tag-them" id="tag-them"><span id="name-them">Them</span><svg class="tag-muted" aria-label="Their microphone is off"><use href="#i-mic-off"/></svg></span>
+          </div>
+          <p class="cue" id="cue" aria-live="polite"></p>
+          <p class="count" id="count" role="timer" aria-hidden="true"></p>
+          <p class="idea" id="idea" aria-live="polite"></p>
+          <div class="reactions" id="reactions" aria-hidden="true"></div>
+          <div class="flash" id="flash" aria-hidden="true"></div>
         </div>
-        <p class="cue" id="cue" aria-live="polite"></p>
-        <p class="count" id="count" role="timer" aria-hidden="true"></p>
-        <p class="idea" id="idea" aria-live="polite"></p>
-        <div class="reactions" id="reactions" aria-hidden="true"></div>
-        <div class="flash" id="flash" aria-hidden="true"></div>
       </div>
-    </div>
 
-    <div class="callbar">
-      <div class="call-btns">
-        <button class="icon-btn" id="mic" type="button" aria-pressed="true" title="Mute microphone (M)"><svg><use href="#i-mic"/></svg><span class="sr-only">Microphone</span></button>
-        <button class="icon-btn" id="speaker" type="button" aria-pressed="true" title="Mute their voice"><svg><use href="#i-speaker"/></svg><span class="sr-only">Their voice</span></button>
-        <input class="volume" id="volume" type="range" min="0" max="100" value="100" aria-label="Their volume">
-        <button class="icon-btn" id="sfx" type="button" aria-pressed="true" title="Booth sounds"><svg><use href="#i-note"/></svg><span class="sr-only">Booth sounds</span></button>
+      <div class="callbar">
+        <div class="call-btns">
+          <button class="icon-btn" id="mic" type="button" aria-pressed="true" title="Mute microphone (M)"><svg><use href="#i-mic"/></svg><span class="sr-only">Microphone</span></button>
+          <button class="icon-btn" id="speaker" type="button" aria-pressed="true" title="Mute their voice"><svg><use href="#i-speaker"/></svg><span class="sr-only">Their voice</span></button>
+          <input class="volume" id="volume" type="range" min="0" max="100" value="100" aria-label="Their volume">
+          <button class="icon-btn" id="sfx" type="button" aria-pressed="true" title="Booth sounds"><svg><use href="#i-note"/></svg><span class="sr-only">Booth sounds</span></button>
+        </div>
+        <div class="reacts" id="reacts" role="group" aria-label="Send a reaction"></div>
       </div>
-      <div class="reacts" id="reacts" role="group" aria-label="Send a reaction"></div>
-    </div>
 
-    <div class="arrange" id="arrange" hidden>
-      <p class="arrange-tip">✋ Drag yourself to move · pinch or scroll to resize</p>
-      <div class="arrange-btns">
-        <label class="size-field">Size <input type="range" id="size" min="50" max="160" value="100"></label>
-        <button class="btn btn-quiet btn-small" id="front" type="button">Bring me to front</button>
-        <button class="btn btn-quiet btn-small" id="place-reset" type="button">Reset</button>
+      <div class="arrange" id="arrange" hidden>
+        <p class="arrange-tip">✋ Drag yourself to move · pinch or scroll to resize</p>
+        <div class="arrange-btns">
+          <label class="size-field">Size <input type="range" id="size" min="50" max="160" value="100"></label>
+          <button class="btn btn-quiet btn-small" id="front" type="button">Bring me to front</button>
+          <button class="btn btn-quiet btn-small" id="place-reset" type="button">Reset</button>
+        </div>
       </div>
-    </div>
 
-    <div class="dots" id="dots" aria-hidden="true"></div>
+      <div class="dots" id="dots" aria-hidden="true"></div>
+    </div>
 
     <div class="deck card" id="deck">
       <div class="invite" id="invite">
@@ -184,51 +186,60 @@
         </div>
       </div>
 
-      <div class="settings">
-        <fieldset class="seg">
-          <legend>Photos</legend>
-          <label><input type="radio" name="poses" value="2"><span>2</span></label>
-          <label><input type="radio" name="poses" value="3"><span>3</span></label>
-          <label><input type="radio" name="poses" value="4" checked><span>4</span></label>
-        </fieldset>
-        <fieldset class="seg">
-          <legend>Countdown</legend>
-          <label><input type="radio" name="count" value="3" checked><span>3s</span></label>
-          <label><input type="radio" name="count" value="5"><span>5s</span></label>
-          <label><input type="radio" name="count" value="10"><span>10s</span></label>
-        </fieldset>
-        <label class="check"><input type="checkbox" id="ideas" checked><span>Pose ideas</span></label>
-        <div class="field name-field">
-          <label for="booth-name">Your name</label>
-          <input id="booth-name" type="text" maxlength="16" autocomplete="nickname" placeholder="You">
-        </div>
-        <div class="field name-field">
-          <label for="my-city">Your city</label>
-          <input id="my-city" type="text" maxlength="24" autocomplete="address-level2" placeholder="Your city">
-        </div>
+      <div class="tabs" role="tablist" aria-label="Booth settings">
+        <button role="tab" type="button" id="btab-look" aria-controls="bpane-look" aria-selected="true">Look</button>
+        <button role="tab" type="button" id="btab-setup" aria-controls="bpane-setup" aria-selected="false" tabindex="-1">Photos &amp; you</button>
       </div>
 
-      <fieldset class="chip-field">
-        <legend>Filter <span class="opt">(live preview)</span></legend>
-        <div class="chips" id="filters-booth"></div>
-      </fieldset>
+      <div class="pane" role="tabpanel" id="bpane-look" aria-labelledby="btab-look">
+        <fieldset class="chip-field">
+          <legend>Filter <span class="opt">(live preview)</span></legend>
+          <div class="chips scroll" id="filters-booth"></div>
+        </fieldset>
 
-      <fieldset class="chip-field">
-        <legend>How you stand</legend>
-        <div class="chips" id="modes"></div>
-      </fieldset>
+        <fieldset class="chip-field">
+          <legend>How you stand</legend>
+          <div class="chips scroll" id="modes"></div>
+        </fieldset>
 
-      <fieldset class="chip-field">
-        <legend>Background <span class="opt">(you both appear in the same place)</span></legend>
-        <div class="chips" id="backgrounds"></div>
-        <button class="btn btn-quiet btn-small scene-change" id="scene-change" type="button" hidden>Change photo</button>
-        <input type="file" id="scene-file" accept="image/*" hidden>
-      </fieldset>
+        <fieldset class="chip-field">
+          <legend>Background <span class="opt">(you both appear in the same place)</span></legend>
+          <div class="chips scroll" id="backgrounds"></div>
+          <button class="btn btn-quiet btn-small scene-change" id="scene-change" type="button" hidden>Change photo</button>
+          <input type="file" id="scene-file" accept="image/*" hidden>
+        </fieldset>
 
-      <fieldset class="chip-field">
-        <legend>Background blur <span class="opt">(like portrait mode)</span></legend>
-        <div class="chips" id="blurs"></div>
-      </fieldset>
+        <fieldset class="chip-field">
+          <legend>Background blur <span class="opt">(like portrait mode)</span></legend>
+          <div class="chips scroll" id="blurs"></div>
+        </fieldset>
+      </div>
+
+      <div class="pane" role="tabpanel" id="bpane-setup" aria-labelledby="btab-setup" hidden>
+        <div class="settings">
+          <fieldset class="seg">
+            <legend>Photos</legend>
+            <label><input type="radio" name="poses" value="2"><span>2</span></label>
+            <label><input type="radio" name="poses" value="3"><span>3</span></label>
+            <label><input type="radio" name="poses" value="4" checked><span>4</span></label>
+          </fieldset>
+          <fieldset class="seg">
+            <legend>Countdown</legend>
+            <label><input type="radio" name="count" value="3" checked><span>3s</span></label>
+            <label><input type="radio" name="count" value="5"><span>5s</span></label>
+            <label><input type="radio" name="count" value="10"><span>10s</span></label>
+          </fieldset>
+          <label class="check"><input type="checkbox" id="ideas" checked><span>Pose ideas</span></label>
+          <div class="field name-field">
+            <label for="booth-name">Your name</label>
+            <input id="booth-name" type="text" maxlength="16" autocomplete="nickname" placeholder="You">
+          </div>
+          <div class="field name-field">
+            <label for="my-city">Your city</label>
+            <input id="my-city" type="text" maxlength="24" autocomplete="address-level2" placeholder="Your city">
+          </div>
+        </div>
+      </div>
 
       <div class="go-row">
         <div class="go-info">

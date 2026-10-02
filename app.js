@@ -2812,26 +2812,28 @@
   $('show-times').addEventListener('change', (e) => changeLook({ times: e.target.checked }));
   $('meet-date').addEventListener('change', (e) => changeLook({ meet: e.target.value }));
 
-  // Tabs on the result screen
-  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
-  function selectTab(tab) {
-    for (const t of tabs) {
-      const on = t === tab;
-      t.setAttribute('aria-selected', String(on));
-      t.tabIndex = on ? 0 : -1;
-      $(t.getAttribute('aria-controls')).hidden = !on;
-    }
-  }
-  tabs.forEach((t, i) => {
-    t.addEventListener('click', () => selectTab(t));
-    t.addEventListener('keydown', (e) => {
-      const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-      if (!d) return;
-      const next = tabs[(i + d + tabs.length) % tabs.length];
-      selectTab(next);
-      next.focus();
+  // Tabs (the booth panel and the result screen each have their own set)
+  for (const list of document.querySelectorAll('[role="tablist"]')) {
+    const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
+    const selectTab = (tab) => {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        $(t.getAttribute('aria-controls')).hidden = !on;
+      }
+    };
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => selectTab(t));
+      t.addEventListener('keydown', (e) => {
+        const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (!d) return;
+        const next = tabs[(i + d + tabs.length) % tabs.length];
+        selectTab(next);
+        next.focus();
+      });
     });
-  });
+  }
 
   // Colour themes for the site itself
   $('themes').insertAdjacentHTML('beforeend', THEMES.map((t) =>
