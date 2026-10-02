@@ -198,6 +198,11 @@
         <div class="chips" id="filters-booth"></div>
       </fieldset>
 
+      <fieldset class="chip-field">
+        <legend>Same place <span class="opt">(swap both backgrounds for one scene, so you look side by side)</span></legend>
+        <div class="chips" id="backgrounds"></div>
+      </fieldset>
+
       <div class="go-row">
         <div class="go-info">
           <p class="limits" id="limits" hidden></p>
@@ -272,6 +277,7 @@
       <div class="actions">
         <button class="btn btn-primary btn-big" id="save" type="button">Save strip</button>
         <button class="btn btn-quiet" id="share" type="button" hidden>Share</button>
+        <button class="btn btn-quiet" id="save-more" type="button">Single photos</button>
         <button class="btn btn-quiet" id="again" type="button">Take more photos</button>
       </div>
 
@@ -315,6 +321,19 @@
     <button class="btn btn-primary" id="leave-yes" type="button">Leave</button>
     <button class="btn btn-quiet" id="leave-no" type="button">Stay</button>
   </div>
+</dialog>
+
+<dialog class="modal card save-sheet" id="save-dialog" aria-labelledby="save-title">
+  <h2 id="save-title">Save your photos</h2>
+  <p class="save-tip" id="save-tip">Press and hold a picture, then choose <b>Save to Photos</b> or <b>Download image</b>.</p>
+  <div class="save-main"><img id="save-img" alt="Your photo strip"></div>
+  <div class="actions">
+    <button class="btn btn-primary" id="save-share" type="button" hidden>Save to Photos</button>
+    <a class="btn btn-quiet" id="save-file" href="#" download>Download file</a>
+  </div>
+  <p class="gallery-title">Single photos</p>
+  <div class="save-singles" id="save-singles"></div>
+  <button class="btn btn-quiet save-done" id="save-close" type="button">Done</button>
 </dialog>
 
 <p class="toast" id="toast" role="status" aria-live="polite"></p>

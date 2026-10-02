@@ -512,6 +512,21 @@ body.shooting .marquee { animation: chase .5s linear infinite; }
 
 .half.speaking::after { box-shadow: inset 0 0 0 4px #6FE3AE; }
 
+/* With a background on, the picture is already mirrored before it's sent. */
+.half.fx video { transform: none; }
+
+.chips.loading { opacity: .6; pointer-events: none; }
+
+.raw-cam {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .them video { opacity: 0; }
 .frame.has-them .them video { opacity: 1; transition: opacity .4s ease; }
 .frame.has-them .empty { display: none; }
@@ -953,6 +968,16 @@ body.shooting .deck { visibility: hidden; }
 .modal[open] { animation: rise .25s ease both; }
 .modal h2 { font-family: var(--display); font-weight: 400; font-size: 1.7rem; line-height: 1.1; margin: 0 0 .8rem; }
 .modal p { color: var(--ink-soft); }
+
+.save-sheet { width: min(94vw, 34rem); max-height: 92dvh; overflow-y: auto; }
+.save-sheet .actions { padding: .2rem 0 1.2rem; }
+.save-tip { margin-bottom: 1rem; }
+.save-main { display: grid; place-items: center; margin-bottom: 1rem; padding: .8rem; border-radius: 18px; background: var(--accent-soft); }
+.save-main img { display: block; max-width: 100%; max-height: 52dvh; border-radius: 6px; box-shadow: var(--shadow); -webkit-touch-callout: default; }
+.save-singles { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: .6rem; margin-bottom: 1.2rem; }
+.save-singles a { display: block; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 10px -4px rgba(63, 49, 87, .4); }
+.save-singles img { display: block; width: 100%; height: auto; -webkit-touch-callout: default; }
+.save-done { width: 100%; }
 
 /* ---------- Toast and confetti ---------- */
 

@@ -17,6 +17,20 @@ window.BOOTH_CONFIG = {
   // },
   peerOptions: {},
 
+  // Easiest way to add a TURN relay: create a free app at metered.ca, open
+  // "TURN Server" > "Credentials", and paste the "fetch credentials" URL here.
+  // It looks like https://YOURAPP.metered.live/api/v1/turn/credentials?apiKey=...
+  // The booth loads relay servers from it each time someone turns on their camera.
+  turnCredentialsUrl: "",
+
+  // Where the "Same place" backgrounds load their person-cutout model from.
+  // They load only when someone picks a background.
+  mediapipe: {
+    lib: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs",
+    wasm: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm",
+    model: "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite"
+  },
+
   // Booth codes are prefixed with this on the connection server so they don't
   // clash with other sites using the same free server. Change it to anything unique.
   idPrefix: "ldbooth-",

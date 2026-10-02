@@ -17,9 +17,14 @@
   'use strict';
 
   const CFG = Object.assign(
-    { peerOptions: {}, idPrefix: 'ldbooth-', defaultHours: 24, defaultStrips: 10 },
+    { peerOptions: {}, idPrefix: 'ldbooth-', defaultHours: 24, defaultStrips: 10, turnCredentialsUrl: '' },
     window.BOOTH_CONFIG || {}
   );
+  CFG.mediapipe = Object.assign({
+    lib: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/vision_bundle.mjs',
+    wasm: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm',
+    model: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite'
+  }, (window.BOOTH_CONFIG || {}).mediapipe || {});
   const $ = (id) => document.getElementById(id);
 
   // localStorage can throw (private windows, blocked storage), so wrap it.
@@ -381,6 +386,8 @@
     call = null;
     partnerId = null;
     try { if (p) p.destroy(); } catch (e) { /* ignore */ }
+    FX.on = false;
+    fxCancel();
     if (localStream) localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
     vidThem.srcObject = null;
@@ -612,8 +619,8 @@
     }
   }
 
-  function hello() { send({ type: 'hello', name: myName, mic: micOn, taken }); }
-  function sendSettings() { send({ type: 'settings', poses, count, ideas: ideasOn }); }
+  function hello() { send({ type: 'hello', name: myName, mic: micOn, taken, fx: FX.on }); }
+  function sendSettings() { send({ type: 'settings', poses, count, ideas: ideasOn, bg: FX.bg }); }
   function sendLook() { send(Object.assign({ type: 'look' }, look)); }
 
   // Time on the host's clock, which both sides use for the countdown.
@@ -671,7 +678,7 @@
     p.on('call', (m) => {
       if (partnerId && partnerId !== m.peer) { m.close(); return; }
       partnerId = m.peer;
-      m.answer(localStream);
+      m.answer(outgoing());
       wireCall(m);
     });
     p.on('disconnected', () => {
@@ -702,7 +709,7 @@
       bestRtt = Infinity;
       applyRole();
       wireConn(p.connect(hostId(), { reliable: true, serialization: 'json' }));
-      wireCall(p.call(hostId(), localStream, CALL_OPTS));
+      wireCall(p.call(hostId(), outgoing(), CALL_OPTS));
       setTimeout(() => {
         if (peer === p && !isConnected() && !gaveUp) {
           fail('Couldn\'t connect to the other person',
@@ -798,6 +805,7 @@
     dropMeter('them');
     frame.classList.remove('has-them');
     setPartner('', true);
+    $('half-them').classList.remove('fx');
     SFX.leave();
     toast(who + ' left the booth');
 
@@ -847,6 +855,7 @@
         break;
       case 'hello':
         setPartner(cleanName(d.name), d.mic !== false);
+        $('half-them').classList.toggle('fx', d.fx === true);
         if (Number.isInteger(d.taken)) setTaken(d.taken);
         break;
       case 'settings':
@@ -892,6 +901,7 @@
     setRadio('poses', poses);
     setRadio('count', count);
     $('ideas').checked = ideasOn;
+    if (typeof d.bg === 'string' && d.bg !== FX.bg) setBackground(d.bg, true);
   }
 
   function floatReaction(e, mine) {
@@ -908,6 +918,464 @@
     setTimeout(() => el.remove(), 3000);
     layer.appendChild(el);
     SFX.pop();
+  }
+
+  /* ---------- "Same place" backgrounds ----------
+   * Each side cuts itself out of its own camera with MediaPipe's selfie model
+   * and stands in front of the same scene: the host in the left half, the guest
+   * in the right half, so the scene runs across the whole picture. The result is
+   * drawn on a canvas, and that canvas is what we preview, send and photograph. */
+
+  const BACKGROUNDS = [
+    { id: 'none', name: 'Off' },
+    { id: 'blur', name: '💨 Blur' },
+    { id: 'beach', name: '🏖️ Beach' },
+    { id: 'night', name: '🌙 Night sky' },
+    { id: 'blossom', name: '🌸 Blossoms' },
+    { id: 'clouds', name: '🌈 Clouds' },
+    { id: 'hearts', name: '💗 Hearts' },
+    { id: 'room', name: '🛋️ Cozy room' }
+  ];
+
+  const SCENE_W = SHOT_W * 2;
+  const SCENE_H = SHOT_H;
+  const MASK_W = 192;
+  const MASK_H = 256;
+
+  const FX = {
+    bg: 'none',
+    on: false,        // true while the canvas picture is the one being shown and sent
+    seg: null,
+    loading: null,
+    raw: null,        // hidden video playing the camera
+    src: null,        // camera, cropped and mirrored
+    small: null,      // camera, small, for the model
+    mask: null,       // the cut-out mask
+    maskData: null,
+    prev: null,       // last mask, to smooth flicker
+    person: null,
+    out: null,        // the final picture
+    stream: null,     // out.captureStream()
+    scenes: {},
+    timer: 0,
+    timerKind: ''
+  };
+
+  const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+
+  function grad(g, stops, x0, y0, x1, y1) {
+    const gr = g.createLinearGradient(x0, y0, x1, y1);
+    stops.forEach((c, i) => gr.addColorStop(i / (stops.length - 1), c));
+    return gr;
+  }
+
+  function blob(g, x, y, r, color) {
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  function cloud(g, x, y, s, color) {
+    [[0, 0, 1], [-0.9, 0.25, 0.7], [0.9, 0.25, 0.75], [-0.4, -0.35, 0.75], [0.45, -0.3, 0.65]]
+      .forEach(([dx, dy, r]) => blob(g, x + dx * s, y + dy * s, r * s, color));
+  }
+
+  function drawSceneArt(id) {
+    const c = canvas(SCENE_W, SCENE_H);
+    const g = c.getContext('2d');
+    const W = SCENE_W, H = SCENE_H;
+    const rand = rng('scene-' + id);
+
+    if (id === 'beach') {
+      g.fillStyle = grad(g, ['#FFB8D0', '#FFD6C2', '#FFF0C9'], 0, 0, 0, 520);
+      g.fillRect(0, 0, W, 520);
+      g.save();
+      g.shadowColor = 'rgba(255, 240, 180, .9)';
+      g.shadowBlur = 80;
+      blob(g, W / 2, 500, 140, '#FFF3B8');
+      g.restore();
+      for (let i = 0; i < 4; i++) cloud(g, 120 + i * 320 + rand() * 60, 90 + rand() * 120, 34 + rand() * 18, 'rgba(255, 255, 255, .7)');
+      g.fillStyle = grad(g, ['#9ED6EE', '#7FC4E4'], 0, 500, 0, 650);
+      g.fillRect(0, 500, W, 150);
+      g.strokeStyle = 'rgba(255, 255, 255, .55)';
+      g.lineWidth = 4;
+      g.lineCap = 'round';
+      for (let i = 0; i < 26; i++) {
+        const x = rand() * W, y = 520 + rand() * 120;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + 30 + rand() * 50, y); g.stroke();
+      }
+      g.fillStyle = '#FFE6C4';
+      g.beginPath();
+      g.moveTo(0, 650);
+      for (let x = 0; x <= W; x += 40) g.lineTo(x, 640 + Math.sin(x / 70) * 10);
+      g.lineTo(W, H); g.lineTo(0, H); g.closePath(); g.fill();
+      for (const [px, flip] of [[90, 1], [W - 90, -1]]) {
+        g.strokeStyle = '#B98C6E';
+        g.lineWidth = 26;
+        g.beginPath(); g.moveTo(px, H); g.quadraticCurveTo(px + 40 * flip, 520, px + 10 * flip, 330); g.stroke();
+        g.fillStyle = '#7FD3A8';
+        for (let k = 0; k < 6; k++) {
+          g.save();
+          g.translate(px + 10 * flip, 330);
+          g.rotate(-Math.PI / 2 + (k - 2.5) * 0.55);
+          g.beginPath(); g.ellipse(90, 0, 95, 24, 0, 0, Math.PI * 2); g.fill();
+          g.restore();
+        }
+      }
+      g.strokeStyle = 'rgba(90, 70, 110, .5)';
+      g.lineWidth = 4;
+      for (let i = 0; i < 5; i++) {
+        const x = 300 + rand() * 600, y = 150 + rand() * 200;
+        g.beginPath(); g.moveTo(x - 14, y - 6); g.quadraticCurveTo(x - 6, y - 12, x, y); g.quadraticCurveTo(x + 6, y - 12, x + 14, y - 6); g.stroke();
+      }
+    } else if (id === 'night') {
+      g.fillStyle = grad(g, ['#2F2A63', '#6A5BB5', '#D6A9E0'], 0, 0, 0, H);
+      g.fillRect(0, 0, W, H);
+      for (let i = 0; i < 160; i++) {
+        g.globalAlpha = 0.4 + rand() * 0.6;
+        blob(g, rand() * W, rand() * H * 0.75, 1 + rand() * 2.6, '#FFFFFF');
+      }
+      g.globalAlpha = 1;
+      g.save();
+      g.shadowColor = 'rgba(255, 246, 214, .8)';
+      g.shadowBlur = 60;
+      blob(g, W - 210, 150, 70, '#FFF6D6');
+      g.restore();
+      blob(g, W - 180, 130, 62, '#5B4FA5');
+      g.strokeStyle = 'rgba(255, 255, 255, .5)';
+      g.lineWidth = 2;
+      g.beginPath(); g.moveTo(0, 60); g.quadraticCurveTo(W / 2, 200, W, 60); g.stroke();
+      const bulbs = ['#FFC6D9', '#FFE7A6', '#C9F0DE', '#CDE7FF', '#D9CCFF'];
+      for (let i = 1; i < 24; i++) {
+        const t = i / 24, x = t * W, y = (1 - t) * (1 - t) * 60 + 2 * (1 - t) * t * 200 + t * t * 60;
+        g.save(); g.shadowColor = bulbs[i % 5]; g.shadowBlur = 18; blob(g, x, y + 10, 8, bulbs[i % 5]); g.restore();
+      }
+      g.fillStyle = '#3B3170';
+      g.beginPath(); g.ellipse(250, H + 120, 520, 300, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#4A3E86';
+      g.beginPath(); g.ellipse(W - 250, H + 140, 560, 300, 0, 0, Math.PI * 2); g.fill();
+    } else if (id === 'blossom') {
+      g.fillStyle = grad(g, ['#CDE7FF', '#F3EEFF', '#FFEFF4'], 0, 0, 0, H);
+      g.fillRect(0, 0, W, H);
+      g.fillStyle = '#C9F0DE';
+      g.beginPath(); g.ellipse(W / 2, H + 60, W * 0.75, 170, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#8E6E7E';
+      g.lineCap = 'round';
+      const branches = [[0, 120, 380, 40, 520, 160], [W, 100, W - 360, 30, W - 540, 170], [0, 380, 160, 300, 260, 330], [W, 360, W - 170, 290, W - 260, 320]];
+      for (const [x0, y0, cx, cy, x1, y1] of branches) {
+        g.lineWidth = 18;
+        g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(cx, cy, x1, y1); g.stroke();
+        for (let i = 0; i < 70; i++) {
+          const t = rand();
+          const bx = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * x1;
+          const by = (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * cy + t * t * y1;
+          g.globalAlpha = 0.75 + rand() * 0.25;
+          blob(g, bx + (rand() - 0.5) * 110, by + (rand() - 0.5) * 90, 10 + rand() * 18, rand() < 0.5 ? '#FFC6D9' : '#FFDDE8');
+        }
+        g.globalAlpha = 1;
+      }
+      for (let i = 0; i < 40; i++) {
+        g.save();
+        g.translate(rand() * W, 200 + rand() * (H - 200));
+        g.rotate(rand() * Math.PI);
+        g.fillStyle = 'rgba(255, 170, 200, .8)';
+        g.beginPath(); g.ellipse(0, 0, 9, 5, 0, 0, Math.PI * 2); g.fill();
+        g.restore();
+      }
+    } else if (id === 'clouds') {
+      g.fillStyle = grad(g, ['#A9D3FF', '#D8ECFF', '#F6F0FF'], 0, 0, 0, H);
+      g.fillRect(0, 0, W, H);
+      const bands = ['#FFC6D9', '#FFD9C4', '#FFE7A6', '#C9F0DE', '#CDE7FF', '#D9CCFF'];
+      g.lineWidth = 34;
+      g.globalAlpha = 0.85;
+      bands.forEach((col, i) => {
+        g.strokeStyle = col;
+        g.beginPath(); g.arc(W / 2, H + 40, 560 - i * 34, Math.PI, 0); g.stroke();
+      });
+      g.globalAlpha = 1;
+      for (let i = 0; i < 9; i++) cloud(g, rand() * W, 80 + rand() * 260, 40 + rand() * 40, 'rgba(255, 255, 255, .9)');
+      cloud(g, 110, H - 40, 110, '#FFFFFF');
+      cloud(g, W - 110, H - 30, 120, '#FFFFFF');
+      cloud(g, W / 2, H + 30, 100, '#FFFFFF');
+    } else if (id === 'hearts') {
+      g.fillStyle = grad(g, ['#FFD6E2', '#F1D9FF', '#E2D8FF'], 0, 0, W, H);
+      g.fillRect(0, 0, W, H);
+      for (let i = 0; i < 26; i++) {
+        g.globalAlpha = 0.25;
+        blob(g, rand() * W, rand() * H, 30 + rand() * 70, '#FFFFFF');
+      }
+      g.globalAlpha = 1;
+      const cols = ['#FF8FB1', '#FFB3CB', '#B79CFF', '#FFFFFF'];
+      for (let i = 0; i < 46; i++) {
+        g.save();
+        g.translate(rand() * W, rand() * H);
+        g.rotate((rand() - 0.5) * 0.8);
+        g.globalAlpha = 0.55 + rand() * 0.45;
+        heartPath(g, 12 + rand() * 34);
+        g.fillStyle = cols[Math.floor(rand() * cols.length)];
+        g.fill();
+        g.restore();
+      }
+    } else if (id === 'room') {
+      g.fillStyle = '#FFE9DA';
+      g.fillRect(0, 0, W, H);
+      g.fillStyle = 'rgba(255, 255, 255, .45)';
+      for (let x = 0; x < W; x += 60) g.fillRect(x, 0, 24, 560);
+      g.fillStyle = '#F2CFB0';
+      g.fillRect(0, 560, W, H - 560);
+      g.fillStyle = '#E5BC98';
+      for (let x = 0; x < W; x += 120) g.fillRect(x, 560, 4, H - 560);
+      // window across the middle
+      g.fillStyle = '#FFFFFF';
+      roundRect(g, W / 2 - 230, 70, 460, 300, 24); g.fill();
+      g.fillStyle = grad(g, ['#BFE0FF', '#FFE3EE'], 0, 90, 0, 350);
+      roundRect(g, W / 2 - 212, 88, 424, 264, 16); g.fill();
+      cloud(g, W / 2 - 90, 170, 30, '#FFFFFF');
+      cloud(g, W / 2 + 110, 240, 24, '#FFFFFF');
+      g.fillStyle = '#FFFFFF';
+      g.fillRect(W / 2 - 6, 88, 12, 264);
+      g.fillRect(W / 2 - 212, 214, 424, 12);
+      // frames on the wall
+      [[150, 140, '#D9CCFF'], [W - 250, 120, '#C9F0DE']].forEach(([x, y, col]) => {
+        g.fillStyle = '#FFFFFF'; roundRect(g, x, y, 110, 140, 10); g.fill();
+        g.fillStyle = col; roundRect(g, x + 12, y + 12, 86, 116, 6); g.fill();
+        g.save(); g.translate(x + 55, y + 70); heartPath(g, 18); g.fillStyle = '#FF8FB1'; g.fill(); g.restore();
+      });
+      // sofa
+      g.fillStyle = '#B79CFF';
+      roundRect(g, 40, 470, W - 80, 230, 60); g.fill();
+      g.fillStyle = '#A78BF5';
+      roundRect(g, 0, 560, 130, 200, 50); g.fill();
+      roundRect(g, W - 130, 560, 130, 200, 50); g.fill();
+      g.fillStyle = '#C8B5FF';
+      roundRect(g, 120, 600, W - 240, 110, 30); g.fill();
+      [[220, '#FFC6D9'], [W - 220, '#FFE7A6']].forEach(([x, col]) => {
+        g.save(); g.translate(x, 540); g.rotate(x < W / 2 ? -0.15 : 0.15);
+        g.fillStyle = col; roundRect(g, -60, -55, 120, 110, 30); g.fill(); g.restore();
+      });
+      // plant and lamp
+      g.fillStyle = '#FFB38F'; roundRect(g, 40, 380, 70, 80, 12); g.fill();
+      g.fillStyle = '#7FD3A8';
+      for (let k = 0; k < 7; k++) {
+        g.save(); g.translate(75, 385); g.rotate(-Math.PI / 2 + (k - 3) * 0.35);
+        g.beginPath(); g.ellipse(55, 0, 55, 14, 0, 0, Math.PI * 2); g.fill(); g.restore();
+      }
+      g.fillStyle = '#8E6E7E'; g.fillRect(W - 82, 250, 8, 230);
+      g.save(); g.shadowColor = 'rgba(255, 230, 150, .9)'; g.shadowBlur = 50;
+      g.fillStyle = '#FFE7A6';
+      g.beginPath(); g.moveTo(W - 130, 270); g.lineTo(W - 26, 270); g.lineTo(W - 52, 200); g.lineTo(W - 104, 200); g.closePath(); g.fill();
+      g.restore();
+    }
+    return c;
+  }
+
+  function sceneArt(id) {
+    if (!FX.scenes[id]) FX.scenes[id] = drawSceneArt(id);
+    return FX.scenes[id];
+  }
+
+  async function loadSegmenter() {
+    if (FX.seg) return FX.seg;
+    if (!FX.loading) {
+      FX.loading = (async () => {
+        const mp = await import(CFG.mediapipe.lib);
+        const files = await mp.FilesetResolver.forVisionTasks(CFG.mediapipe.wasm);
+        FX.seg = await mp.ImageSegmenter.createFromOptions(files, {
+          baseOptions: { modelAssetPath: CFG.mediapipe.model, delegate: 'CPU' },
+          runningMode: 'VIDEO',
+          outputConfidenceMasks: true,
+          outputCategoryMask: false
+        });
+        return FX.seg;
+      })();
+    }
+    try {
+      return await FX.loading;
+    } catch (e) {
+      FX.loading = null;
+      throw e;
+    }
+  }
+
+  function fxSetup() {
+    if (FX.out) return;
+    FX.raw = document.createElement('video');
+    FX.raw.className = 'raw-cam';
+    FX.raw.muted = true;
+    FX.raw.playsInline = true;
+    FX.raw.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(FX.raw);
+    FX.src = canvas(SHOT_W, SHOT_H);
+    FX.small = canvas(MASK_W, MASK_H);
+    FX.person = canvas(SHOT_W, SHOT_H);
+    FX.out = canvas(SHOT_W, SHOT_H);
+    FX.blur = canvas(30, 40);
+    FX.mask = canvas(MASK_W, MASK_H);
+    FX.stream = FX.out.captureStream(30);
+  }
+
+  function fxSchedule() {
+    // Full speed in the booth; slower when the tab is hidden or on another screen.
+    if (document.hidden || $('view-booth').hidden) {
+      FX.timerKind = 't';
+      FX.timer = setTimeout(fxFrame, document.hidden ? 66 : 100);
+    } else {
+      FX.timerKind = 'r';
+      FX.timer = requestAnimationFrame(fxFrame);
+    }
+  }
+
+  function fxCancel() {
+    if (FX.timerKind === 't') clearTimeout(FX.timer);
+    else if (FX.timerKind === 'r') cancelAnimationFrame(FX.timer);
+    FX.timerKind = '';
+  }
+
+  function fxFrame() {
+    FX.timerKind = '';
+    if (!FX.on) return;
+    fxSchedule();
+    const v = FX.raw;
+    const vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh) return;
+
+    // 1. The camera, cropped to 3:4 and mirrored like a mirror.
+    const sg = FX.src.getContext('2d');
+    const scale = Math.max(SHOT_W / vw, SHOT_H / vh);
+    sg.save();
+    sg.translate(SHOT_W, 0);
+    sg.scale(-1, 1);
+    sg.drawImage(v, (SHOT_W - vw * scale) / 2, (SHOT_H - vh * scale) / 2, vw * scale, vh * scale);
+    sg.restore();
+
+    // 2. Ask the model where the person is.
+    const smg = FX.small.getContext('2d', { willReadFrequently: true });
+    smg.drawImage(FX.src, 0, 0, MASK_W, MASK_H);
+    try {
+      FX.seg.segmentForVideo(FX.small, performance.now(), (res) => {
+        const masks = res.confidenceMasks;
+        const m = masks && masks[masks.length - 1];
+        if (!m) return;
+        const f = m.getAsFloat32Array();
+        if (FX.mask.width !== m.width || FX.mask.height !== m.height) {
+          FX.mask.width = m.width;
+          FX.mask.height = m.height;
+          FX.maskData = null;
+        }
+        const mg = FX.mask.getContext('2d');
+        if (!FX.maskData) {
+          FX.maskData = mg.createImageData(m.width, m.height);
+          FX.prev = new Float32Array(f.length);
+        }
+        const d = FX.maskData.data;
+        const prev = FX.prev;
+        for (let i = 0; i < f.length; i++) {
+          let a = (f[i] - 0.3) / 0.4;
+          a = a < 0 ? 0 : a > 1 ? 1 : a;
+          a = prev[i] = a * 0.65 + prev[i] * 0.35; // smooth out flicker
+          d[i * 4 + 3] = a * 255;
+        }
+        mg.putImageData(FX.maskData, 0, 0);
+      });
+    } catch (e) {
+      console.warn('segmentation failed', e);
+    }
+
+    // 3. Background: our half of the scene, or our own room blurred.
+    const og = FX.out.getContext('2d');
+    if (FX.bg === 'blur') {
+      const bg = FX.blur.getContext('2d');
+      bg.drawImage(FX.src, 0, 0, FX.blur.width, FX.blur.height);
+      og.imageSmoothingEnabled = true;
+      og.drawImage(FX.blur, 0, 0, SHOT_W, SHOT_H);
+    } else {
+      const sx = role === 'guest' ? SHOT_W : 0;
+      og.drawImage(sceneArt(FX.bg), sx, 0, SHOT_W, SHOT_H, 0, 0, SHOT_W, SHOT_H);
+    }
+
+    // 4. The person on top.
+    const pg = FX.person.getContext('2d');
+    pg.globalCompositeOperation = 'source-over';
+    pg.clearRect(0, 0, SHOT_W, SHOT_H);
+    pg.drawImage(FX.src, 0, 0);
+    pg.globalCompositeOperation = 'destination-in';
+    pg.drawImage(FX.mask, 0, 0, SHOT_W, SHOT_H);
+    pg.globalCompositeOperation = 'source-over';
+    og.drawImage(FX.person, 0, 0);
+  }
+
+  // The stream we send: the canvas picture (when a background is on) plus our voice.
+  function outgoing() {
+    if (!localStream) return localStream;
+    if (!FX.on) return localStream;
+    return new MediaStream([FX.stream.getVideoTracks()[0], ...localStream.getAudioTracks()]);
+  }
+
+  function swapSentVideo() {
+    const pc = call && call.peerConnection;
+    if (!pc || !localStream) return;
+    const track = FX.on ? FX.stream.getVideoTracks()[0] : localStream.getVideoTracks()[0];
+    for (const s of pc.getSenders()) {
+      if (s.track && s.track.kind === 'video' && s.track !== track) s.replaceTrack(track).catch((e) => console.warn('replaceTrack', e));
+    }
+  }
+
+  function fxApplyView() {
+    vidMe.srcObject = FX.on ? FX.stream : localStream;
+    vidMe.play().catch(() => {});
+    $('half-me').classList.toggle('fx', FX.on);
+    swapSentVideo();
+    hello();
+  }
+
+  async function setBackground(id, quiet) {
+    if (!BACKGROUNDS.some((b) => b.id === id)) return;
+    FX.bg = id;
+    setRadio('bg', id);
+    if (id === 'none') {
+      fxHalt();
+      return;
+    }
+    if (!localStream) return; // starts once the camera is on
+    const chipsEl = $('backgrounds');
+    if (!FX.seg) {
+      chipsEl.classList.add('loading');
+      if (!quiet) toast('Loading backgrounds…');
+    }
+    try {
+      await loadSegmenter();
+    } catch (e) {
+      console.warn('background model failed to load', e);
+      chipsEl.classList.remove('loading');
+      FX.bg = 'none';
+      setRadio('bg', 'none');
+      toast('Backgrounds couldn\'t load on this device. Check your connection and try again.');
+      return;
+    } finally {
+      chipsEl.classList.remove('loading');
+    }
+    if (FX.bg === 'none' || !localStream) return; // changed while loading
+    fxSetup();
+    if (FX.raw.srcObject !== localStream) {
+      FX.raw.srcObject = localStream;
+      FX.raw.play().catch(() => {});
+    }
+    if (!FX.on) {
+      FX.on = true;
+      fxApplyView();
+      fxCancel();
+      fxSchedule();
+    }
+  }
+
+  // Back to the plain camera.
+  function fxHalt() {
+    const was = FX.on;
+    FX.on = false;
+    fxCancel();
+    if (was && localStream) fxApplyView();
+    else $('half-me').classList.remove('fx');
   }
 
   /* ---------- Taking the photos ---------- */
@@ -1030,7 +1498,9 @@
     const vh = vidMe.videoHeight;
     g.fillStyle = '#D9CCFF';
     g.fillRect(0, 0, SHOT_W, SHOT_H);
-    if (vw && vh) {
+    if (FX.on) {
+      g.drawImage(FX.out, 0, 0); // already cut out, mirrored and on the scene
+    } else if (vw && vh) {
       const scale = Math.max(SHOT_W / vw, SHOT_H / vh);
       const dw = vw * scale;
       const dh = vh * scale;
@@ -1496,6 +1966,12 @@
   chips($('stickers'), 'stickers', STICKERS);
   chips($('shapes'), 'shape', SHAPES);
   chips($('fonts'), 'font', FONTS);
+  chips($('backgrounds'), 'bg', BACKGROUNDS);
+  $('backgrounds').addEventListener('change', (e) => {
+    setBackground(e.target.value);
+    store.set('bg', e.target.value);
+    sendSettings();
+  });
 
   const LOOK_INPUTS = {
     paper: 'paper', pattern: 'pattern', layout: 'layout', 'filter-b': 'filter',
@@ -1598,6 +2074,27 @@
   $('name-me').textContent = myName || 'You';
   $('booth-name').addEventListener('change', (e) => setMyName(e.target.value));
 
+  // Fetch relay (TURN) servers if a credentials URL is set in config.js.
+  async function loadIceServers() {
+    if (!CFG.turnCredentialsUrl) return;
+    const ctrl = window.AbortController ? new AbortController() : null;
+    const timer = setTimeout(() => { if (ctrl) ctrl.abort(); }, 5000);
+    try {
+      const res = await fetch(CFG.turnCredentialsUrl, ctrl ? { signal: ctrl.signal } : {});
+      const list = await res.json();
+      const servers = Array.isArray(list) ? list : (list && Array.isArray(list.iceServers) ? list.iceServers : []);
+      if (servers.length) {
+        const config = Object.assign({}, CFG.peerOptions.config);
+        config.iceServers = servers.concat(config.iceServers || []);
+        CFG.peerOptions = Object.assign({}, CFG.peerOptions, { config });
+      }
+    } catch (e) {
+      console.warn('couldn\'t load TURN servers; trying without them', e);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   $('enter').addEventListener('click', async () => {
     const btn = $('enter');
     const error = $('door-error');
@@ -1617,7 +2114,9 @@
       fail('The booth didn\'t load completely', 'Check your internet connection, then try again.');
       return;
     }
+    await loadIceServers();
     show('booth');
+    if (FX.bg !== 'none') setBackground(FX.bg, true);
     tryHost(0);
   });
 
@@ -1700,24 +2199,120 @@
   });
 
   // Paper colours etc. are wired above. Saving and sharing:
-  $('save').addEventListener('click', async () => {
-    const blob = await stripBlob();
-    if (!blob) return;
+  /* ---------- Saving ----------
+   * A plain download works on computers. On phones it often goes to a Downloads
+   * folder instead of the photo gallery, and in-app browsers (Instagram,
+   * Messenger…) block downloads completely. So on phones we open a save sheet
+   * with "Save to Photos" (the share sheet) and pictures people can press and
+   * hold to save. */
+
+  const isPhone = () => !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  const inAppBrowser = /FBAN|FBAV|FB_IAB|Instagram|Messenger|Line\/|TikTok|MicroMessenger|Snapchat/i.test(navigator.userAgent);
+
+  let canShareFiles = false;
+  try {
+    const probe = new File([new Blob(['x'], { type: 'image/jpeg' })], 'x.jpg', { type: 'image/jpeg' });
+    canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [probe] }));
+  } catch (e) { /* sharing not available */ }
+  // Show "Share" only where the device can share image files (mostly phones).
+  $('share').hidden = !canShareFiles;
+
+  let saveUrl = null;   // object URL for the "Download file" link
+  let saveFile = null;  // the strip as a File, ready for the share sheet
+
+  function downloadBlob(blob, name) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName();
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    toast('Strip saved 📸');
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  // One picture per pose (both people side by side), with the chosen filter.
+  function singlePhotos() {
+    const r = result;
+    if (!r || !r.images) return [];
+    const imgs = filteredImages(r, filterOf(look.filter));
+    const out = [];
+    for (let k = 0; k < r.rows; k++) {
+      const l = imgs.left[k], rt = imgs.right[k];
+      if (!l && !rt) continue;
+      const c = document.createElement('canvas');
+      c.width = SHOT_W * (r.solo ? 1 : 2);
+      c.height = SHOT_H;
+      const g = c.getContext('2d');
+      g.fillStyle = '#D9CCFF';
+      g.fillRect(0, 0, c.width, c.height);
+      if (l) g.drawImage(l, 0, 0, SHOT_W, SHOT_H);
+      if (rt) g.drawImage(rt, SHOT_W, 0, SHOT_W, SHOT_H);
+      out.push(c.toDataURL('image/jpeg', 0.92));
+    }
+    return out;
+  }
+
+  async function openSaveSheet() {
+    const blob = await stripBlob();
+    if (!blob) { toast('Couldn\'t make the picture. Please try again.'); return; }
+    if (saveUrl) URL.revokeObjectURL(saveUrl);
+    saveUrl = URL.createObjectURL(blob);
+    saveFile = new File([blob], fileName(), { type: 'image/jpeg' });
+
+    // A data: URL, not a blob: URL, so press-and-hold saving works in in-app browsers too.
+    $('save-img').src = stripCanvas.toDataURL('image/jpeg', 0.92);
+    $('save-file').href = saveUrl;
+    $('save-file').download = fileName();
+    $('save-share').hidden = !canShareFiles;
+    $('save-tip').innerHTML = inAppBrowser
+      ? 'This app\'s built-in browser can block downloads. <b>Press and hold a picture</b> to save it, or open the booth link in Safari or Chrome.'
+      : isPhone()
+        ? (canShareFiles ? 'Tap <b>Save to Photos</b>, or press' : 'Press') +
+          ' and hold a picture and choose <b>Save to Photos</b> or <b>Download image</b>.'
+        : 'Click <b>Download file</b>, or right-click a picture and choose <b>Save image as</b>.';
+
+    const singles = $('save-singles');
+    singles.innerHTML = '';
+    singlePhotos().forEach((url, i) => {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName().replace('.jpg', '-' + (i + 1) + '.jpg');
+      a.title = 'Photo ' + (i + 1);
+      const im = document.createElement('img');
+      im.src = url;
+      im.alt = 'Photo ' + (i + 1);
+      a.appendChild(im);
+      singles.appendChild(a);
+    });
+
+    const d = $('save-dialog');
+    if (d.showModal) { if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+  }
+
+  $('save').addEventListener('click', async () => {
+    if (isPhone() || inAppBrowser) { openSaveSheet(); return; }
+    const blob = await stripBlob();
+    if (!blob) { toast('Couldn\'t make the picture. Please try again.'); return; }
+    downloadBlob(blob, fileName());
+    toast('Saved to your Downloads folder 📸');
   });
 
-  // Show "Share" only where the device can share image files (mostly phones).
-  try {
-    const probe = new File([new Blob(['x'], { type: 'image/jpeg' })], 'x.jpg', { type: 'image/jpeg' });
-    if (navigator.canShare && navigator.canShare({ files: [probe] })) $('share').hidden = false;
-  } catch (e) { /* sharing not available */ }
+  $('save-more').addEventListener('click', openSaveSheet);
+
+  $('save-share').addEventListener('click', async () => {
+    if (!saveFile) return;
+    try {
+      await navigator.share({ files: [saveFile], title: 'Our photo strip' });
+    } catch (e) {
+      if (e && e.name !== 'AbortError') toast('Press and hold the picture to save it instead.');
+    }
+  });
+
+  $('save-close').addEventListener('click', () => {
+    const d = $('save-dialog');
+    if (d.close) d.close(); else d.removeAttribute('open');
+  });
 
   $('share').addEventListener('click', async () => {
     const blob = await stripBlob();
@@ -1737,6 +2332,8 @@
     stopSession();
     closed = true;
     clearInterval(hbTimer);
+    FX.on = false;
+    fxCancel();
     if (localStream) localStream.getTracks().forEach((t) => t.stop());
     setTimeout(shutdown, 300); // give the goodbye message a moment to go out
     SFX.leave();
@@ -1773,6 +2370,7 @@
   setSfx(sfxOn);
   setSpeaker(true);
   applySettings({ poses, count, ideas: ideasOn });
+  setBackground(store.get('bg', 'none'), true);
   lookToUI();
   optSummary();
 

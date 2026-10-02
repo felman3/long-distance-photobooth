@@ -10,10 +10,12 @@ Two people in different places open the same link, see and hear each other live,
 - **Pose ideas**: a suggestion for every photo, the same on both screens.
 - **Countdown length**: 3, 5 or 10 seconds.
 - **Names**: each person can put their name on their video.
+- **Same place backgrounds**: each person is cut out of their own camera and put in front of one shared scene (beach, night sky, blossoms, clouds, hearts, cozy room), so you look like you're standing together. There's also a blur option. The cut-out runs in the browser with Google's MediaPipe; no video leaves the two devices.
 - **Filters** with a live preview: original, black and white, sepia, warm, cool, soft and pop.
 - **Strip styling**: eight pastel papers or any colour you pick, patterns, strip or grid layout, square or rounded corners, stickers, three caption fonts, and the date on or off. When two people are connected, every change shows up on both screens.
 - **Colour themes** for the site itself: blush, lilac, mint, sky and peach (the dots in the top corner).
 - **This visit**: every strip you take stays available until you close the page.
+- **Saving that works on phones**: on a computer "Save strip" downloads the picture. On a phone it opens a save sheet with "Save to Photos" and pictures you can press and hold to save, plus each photo on its own.
 - **Leave button**: leaves the booth, turns the camera and microphone off and tells the other person.
 - **Booth limits**: when opening a booth, choose how long the link works (1 hour, 1 day, 1 week or no limit) and how many strips can be taken (3, 5, 10 or no limit).
 
@@ -54,7 +56,7 @@ To run it on your own computer first: `npx serve .` and open the address it prin
 | `index.html` | All the screens: landing page, camera step, booth, finished strip |
 | `style.css` | Colours, fonts, layout |
 | `app.js` | Connection, countdown, capture, and strip drawing |
-| `config.js` | Connection settings you can change |
+| `config.js` | Connection settings, the relay (TURN) address, booth limit defaults |
 | `vendor/peerjs.min.js` | PeerJS 1.5.5, the library that connects the two browsers |
 | `fonts/` | The three typefaces (open-source, SIL Open Font License) |
 
@@ -69,7 +71,8 @@ To run it on your own computer first: `npx serve .` and open the address it prin
 ## Good to know
 
 - **Connection server.** The two browsers find each other through the free PeerJS cloud server. It needs no setup, but it is a shared community service with no uptime guarantee. If your site gets busy, run your own PeerServer (or switch to a hosted realtime service) and put its address in `config.js`.
-- **Strict networks.** Video and photos travel directly between the two devices. Some mobile and office networks block that, and the connection then goes through a relay (TURN) server. PeerJS includes a basic one; for better reliability add your own in `config.js`.
+- **Strict networks (recommended setup).** Video and photos travel directly between the two devices. Some mobile and office networks block that, and the connection then has to go through a relay (TURN) server. To add one for free: sign up at metered.ca, create an app, open **TURN Server**, copy the credentials URL (it looks like `https://YOURAPP.metered.live/api/v1/turn/credentials?apiKey=...`) and paste it into `turnCredentialsUrl` in `config.js`.
+- **Backgrounds load from the internet.** The cut-out model (about 12 MB, loaded only when someone picks a background) comes from jsDelivr and Google. The addresses are in `config.js`. On older phones the cut-out can be slow; "Off" turns it off.
 - **Two people per booth.** A third person who opens the link is told the booth is full.
 - **Sound.** The booth asks for the microphone as well as the camera. If someone blocks the microphone they can still join with video only. Headphones stop echo. Some phones only play the other person's voice after a tap, so the booth shows a "Tap to hear them" button when needed.
 - **How the limits work.** The expiry time and strip limit are written into the booth code (for example `abcd-efgh-2kq9xz-10`). Editing them in the link leads to a different, empty booth, so the limits can't be changed by editing the link. With no backend, the strip count is kept on the two devices: it's a friendly limit, not a security feature.
