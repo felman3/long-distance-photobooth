@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Long Distance Photobooth</title>
+  <meta name="description" content="Take a photo strip together from two different places. Open a booth, send the link, and pose side by side.">
+  <meta name="theme-color" content="#2836B8">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%B8%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="./">Long Distance Photobooth</a>
+  <p class="status" id="status" hidden><span class="status-dot" aria-hidden="true"></span><span id="status-text"></span></p>
+</header>
+
+<main>
+
+  <!-- Landing page -->
+  <section class="view home" id="view-home" hidden>
+    <div class="home-copy">
+      <h1>Take a photo strip together, from two different places.</h1>
+      <p class="lede">Open a booth, send the link to someone far away, and pose side by side. You both get the same strip to keep.</p>
+
+      <button class="btn btn-primary btn-big" id="open-booth" type="button">Open a booth</button>
+
+      <form class="join" id="join-form" novalidate>
+        <label for="join-code">Someone sent you a link or code?</label>
+        <div class="join-row">
+          <input id="join-code" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste it here">
+          <button class="btn btn-quiet" type="submit">Join booth</button>
+        </div>
+        <p class="field-error" id="join-error" role="alert" hidden></p>
+      </form>
+    </div>
+
+    <div class="home-strip" aria-hidden="true">
+      <svg viewBox="0 0 220 640" xmlns="http://www.w3.org/2000/svg" role="presentation">
+        <defs>
+          <g id="person">
+            <circle cx="48" cy="54" r="19"/>
+            <path d="M10 128C10 97 28 82 48 82s38 15 38 46z"/>
+          </g>
+        </defs>
+        <rect width="220" height="640" rx="5" fill="#F6F7FB"/>
+
+        <!-- Photo 1 -->
+        <svg x="14" y="14" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><use href="#person" fill="#1B257F"/></svg>
+        <svg x="110" y="14" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><use href="#person" fill="#1B257F"/></svg>
+
+        <!-- Photo 2: leaning in -->
+        <svg x="14" y="150" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><use href="#person" fill="#1B257F" transform="translate(12 4) rotate(12 48 128)"/></svg>
+        <svg x="110" y="150" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><use href="#person" fill="#1B257F" transform="translate(-12 4) rotate(-12 48 128)"/></svg>
+
+        <!-- Photo 3: a heart across the join -->
+        <svg x="14" y="286" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><use href="#person" fill="#1B257F" transform="translate(-6 10)"/></svg>
+        <svg x="110" y="286" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><use href="#person" fill="#1B257F" transform="translate(6 10)"/></svg>
+        <path d="M110 338c-30-21-17-44 0-28 17-16 30 7 0 28z" fill="#F6F7FB"/>
+
+        <!-- Photo 4: waving -->
+        <svg x="14" y="422" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><g fill="#1B257F" stroke="#1B257F"><path d="M24 102 10 64" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="8" cy="56" r="9" stroke="none"/><use href="#person" stroke="none"/></g></svg>
+        <svg x="110" y="422" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><g fill="#1B257F" stroke="#1B257F"><path d="M72 102 86 64" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="88" cy="56" r="9" stroke="none"/><use href="#person" stroke="none"/></g></svg>
+
+        <text x="110" y="604" text-anchor="middle" font-family="Caveat, 'Segoe Print', 'Bradley Hand', cursive" font-weight="700" font-size="34" fill="#141A4D">together anyway</text>
+      </svg>
+    </div>
+
+    <ol class="steps">
+      <li><strong>Open a booth</strong><span>You get a private link. No account, nothing to install.</span></li>
+      <li><strong>Send the link</strong><span>The other person opens it on their phone or laptop.</span></li>
+      <li><strong>Pose together</strong><span>One countdown runs on both screens, and both cameras snap at the same moment.</span></li>
+    </ol>
+  </section>
+
+  <!-- Camera permission step -->
+  <section class="view door" id="view-door" hidden>
+    <h1>Step into the booth</h1>
+    <p class="lede">Turn on your camera to go in. Video and photos travel only between your two devices. Nothing is saved on a server.</p>
+    <button class="btn btn-primary btn-big" id="enter" type="button">Turn on camera</button>
+    <p class="field-error" id="door-error" role="alert" hidden></p>
+    <p class="fine">Booth code <span class="code" id="door-code"></span></p>
+  </section>
+
+  <!-- The booth -->
+  <section class="view booth" id="view-booth" hidden>
+    <div class="frame" id="frame">
+      <div class="half me">
+        <video id="vid-me" autoplay playsinline muted></video>
+        <span class="tag tag-me">You</span>
+      </div>
+      <div class="half them">
+        <video id="vid-them" autoplay playsinline muted></video>
+        <div class="empty" id="them-empty">
+          <p id="them-empty-text">Waiting for the other person</p>
+        </div>
+        <span class="tag tag-them">Them</span>
+      </div>
+      <p class="cue" id="cue" aria-live="polite"></p>
+      <p class="count" id="count" role="timer" aria-hidden="true"></p>
+      <div class="flash" id="flash" aria-hidden="true"></div>
+    </div>
+
+    <div class="dots" id="dots" aria-hidden="true"></div>
+
+    <div class="deck" id="deck">
+      <div class="invite" id="invite">
+        <label for="invite-link">Send this link to the other person</label>
+        <div class="join-row">
+          <input id="invite-link" type="text" readonly>
+          <button class="btn btn-primary" id="copy-link" type="button">Copy link</button>
+        </div>
+      </div>
+
+      <div class="controls">
+        <fieldset class="seg">
+          <legend>Photos per strip</legend>
+          <label><input type="radio" name="poses" value="2"><span>2</span></label>
+          <label><input type="radio" name="poses" value="3"><span>3</span></label>
+          <label><input type="radio" name="poses" value="4" checked><span>4</span></label>
+        </fieldset>
+        <button class="btn btn-quiet" id="start" type="button">Take photos alone</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- The finished strip -->
+  <section class="view result" id="view-result" hidden>
+    <div class="printer">
+      <div class="slot" aria-hidden="true"></div>
+      <div class="chute">
+        <canvas id="strip" width="10" height="10" aria-label="Your finished photo strip"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h1>Your strip is ready</h1>
+
+      <fieldset class="swatches">
+        <legend>Paper</legend>
+        <div class="swatch-row" id="papers"></div>
+      </fieldset>
+
+      <label class="check"><input type="checkbox" id="bw"><span>Black and white</span></label>
+
+      <div class="field">
+        <label for="caption">Caption</label>
+        <input id="caption" type="text" maxlength="28" placeholder="Write something on it" autocomplete="off">
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary btn-big" id="save" type="button">Save strip</button>
+        <button class="btn btn-quiet" id="share" type="button" hidden>Share</button>
+        <button class="btn btn-quiet" id="again" type="button">Take more photos</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Something went wrong -->
+  <section class="view door" id="view-error" hidden>
+    <h1 id="error-title">That didn't work</h1>
+    <p class="lede" id="error-text"></p>
+    <button class="btn btn-primary btn-big" id="error-action" type="button">Try again</button>
+  </section>
+
+</main>
+
+<script src="vendor/peerjs.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
