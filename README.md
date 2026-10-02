@@ -1,6 +1,21 @@
 # Long Distance Photobooth
 
-Two people in different places open the same link, see each other live, and take a photo strip together. A shared countdown runs on both screens, each camera takes its own photo at full quality, and both people get the same strip to save.
+Two people in different places open the same link, see and hear each other live, and take a photo strip together. A shared countdown runs on both screens, each camera takes its own photo at full quality, and both people get the same strip to save.
+
+## What's inside
+
+- **Voice chat** with mute, speaker and volume controls, plus a ring that lights up around whoever is talking.
+- **Booth sounds**: countdown beeps, a shutter click, a printer whirr and chimes when someone joins or leaves. They are made in the browser, so there are no sound files. Turn them off with the note button.
+- **Live reactions**: hearts and laughs float across both screens.
+- **Pose ideas**: a suggestion for every photo, the same on both screens.
+- **Countdown length**: 3, 5 or 10 seconds.
+- **Names**: each person can put their name on their video.
+- **Filters** with a live preview: original, black and white, sepia, warm, cool, soft and pop.
+- **Strip styling**: eight pastel papers or any colour you pick, patterns, strip or grid layout, square or rounded corners, stickers, three caption fonts, and the date on or off. When two people are connected, every change shows up on both screens.
+- **Colour themes** for the site itself: blush, lilac, mint, sky and peach (the dots in the top corner).
+- **This visit**: every strip you take stays available until you close the page.
+- **Leave button**: leaves the booth, turns the camera and microphone off and tells the other person.
+- **Booth limits**: when opening a booth, choose how long the link works (1 hour, 1 day, 1 week or no limit) and how many strips can be taken (3, 5, 10 or no limit).
 
 It is a plain static site: no build step, no backend, no database, no accounts.
 
@@ -46,15 +61,17 @@ To run it on your own computer first: `npx serve .` and open the address it prin
 ## Things you may want to change
 
 - **Site name and text**: edit `index.html`.
-- **Colours**: the variables at the top of `style.css`.
-- **Paper colours for the strip**: the `PAPERS` list at the top of `app.js`.
-- **Countdown speed**: `COUNT_MS` and `BETWEEN_MS` at the top of `app.js`.
+- **Colours**: the variables at the top of `style.css` (one block per theme).
+- **Countdown lengths**: `COUNTS` and `BETWEEN_MS` at the top of `app.js`.
+- **Papers, patterns, filters, stickers, fonts, themes, reactions and pose ideas**: the lists near the top of `app.js`.
+- **Default booth limits**: `defaultHours` and `defaultStrips` in `config.js`.
 
 ## Good to know
 
 - **Connection server.** The two browsers find each other through the free PeerJS cloud server. It needs no setup, but it is a shared community service with no uptime guarantee. If your site gets busy, run your own PeerServer (or switch to a hosted realtime service) and put its address in `config.js`.
 - **Strict networks.** Video and photos travel directly between the two devices. Some mobile and office networks block that, and the connection then goes through a relay (TURN) server. PeerJS includes a basic one; for better reliability add your own in `config.js`.
 - **Two people per booth.** A third person who opens the link is told the booth is full.
-- **No sound.** The booth sends video only, so people usually stay on a call or chat while posing.
+- **Sound.** The booth asks for the microphone as well as the camera. If someone blocks the microphone they can still join with video only. Headphones stop echo. Some phones only play the other person's voice after a tap, so the booth shows a "Tap to hear them" button when needed.
+- **How the limits work.** The expiry time and strip limit are written into the booth code (for example `abcd-efgh-2kq9xz-10`). Editing them in the link leads to a different, empty booth, so the limits can't be changed by editing the link. With no backend, the strip count is kept on the two devices: it's a friendly limit, not a security feature.
 - **Privacy.** Photos are never uploaded to a server. They exist only on the two devices until someone saves or shares the strip.
 - **Who stands where.** The first person in the booth is on the left, the second on the right, on both screens and on the strip.

@@ -4,16 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Long Distance Photobooth</title>
-  <meta name="description" content="Take a photo strip together from two different places. Open a booth, send the link, and pose side by side.">
-  <meta name="theme-color" content="#2836B8">
+  <meta name="description" content="Take a photo strip together from two different places. Open a booth, send the link, talk, and pose side by side.">
+  <meta name="theme-color" content="#FFE4EC">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%B8%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<!-- Icons -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-mic-off" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M4 4l16 16"/></symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-speaker-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-note-off" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/><path d="M3 3l18 18"/></symbol>
+</svg>
+
 <header class="top">
-  <a class="brand" href="./">Long Distance Photobooth</a>
-  <p class="status" id="status" hidden><span class="status-dot" aria-hidden="true"></span><span id="status-text"></span></p>
+  <a class="brand" href="./"><span class="brand-mark" aria-hidden="true">✿</span> Long Distance Photobooth</a>
+  <div class="top-right">
+    <p class="status" id="status" hidden><span class="status-dot" aria-hidden="true"></span><span id="status-text"></span></p>
+    <button class="btn btn-leave" id="leave" type="button" hidden>Leave</button>
+    <fieldset class="themes" id="themes">
+      <legend class="sr-only">Colour theme</legend>
+    </fieldset>
+  </div>
 </header>
 
 <main>
@@ -21,10 +37,26 @@
   <!-- Landing page -->
   <section class="view home" id="view-home" hidden>
     <div class="home-copy">
+      <p class="kicker">Two places · one strip</p>
       <h1>Take a photo strip together, from two different places.</h1>
-      <p class="lede">Open a booth, send the link to someone far away, and pose side by side. You both get the same strip to keep.</p>
+      <p class="lede">Open a booth, send the link to someone far away, talk, laugh and pose side by side. You both get the same strip to keep.</p>
 
       <button class="btn btn-primary btn-big" id="open-booth" type="button">Open a booth</button>
+
+      <details class="options">
+        <summary>Booth options <span class="opt" id="opt-summary"></span></summary>
+        <div class="options-body">
+          <fieldset class="chip-field">
+            <legend>The link works for</legend>
+            <div class="chips" id="opt-expiry"></div>
+          </fieldset>
+          <fieldset class="chip-field">
+            <legend>Strips you can take</legend>
+            <div class="chips" id="opt-limit"></div>
+          </fieldset>
+          <p class="fine">After that the link stops working and the booth closes. Strips you already saved stay on your device.</p>
+        </div>
+      </details>
 
       <form class="join" id="join-form" novalidate>
         <label for="join-code">Someone sent you a link or code?</label>
@@ -37,6 +69,7 @@
     </div>
 
     <div class="home-strip" aria-hidden="true">
+      <span class="spark s1">✦</span><span class="spark s2">♥</span><span class="spark s3">✧</span><span class="spark s4">★</span>
       <svg viewBox="0 0 220 640" xmlns="http://www.w3.org/2000/svg" role="presentation">
         <defs>
           <g id="person">
@@ -44,26 +77,22 @@
             <path d="M10 128C10 97 28 82 48 82s38 15 38 46z"/>
           </g>
         </defs>
-        <rect width="220" height="640" rx="5" fill="#F6F7FB"/>
+        <rect width="220" height="640" rx="8" fill="#FFFAF3"/>
 
-        <!-- Photo 1 -->
-        <svg x="14" y="14" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><use href="#person" fill="#1B257F"/></svg>
-        <svg x="110" y="14" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><use href="#person" fill="#1B257F"/></svg>
+        <svg x="14" y="14" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFE7A6"/><use href="#person" fill="#7C6BC4"/></svg>
+        <svg x="110" y="14" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFC6D9"/><use href="#person" fill="#7C6BC4"/></svg>
 
-        <!-- Photo 2: leaning in -->
-        <svg x="14" y="150" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><use href="#person" fill="#1B257F" transform="translate(12 4) rotate(12 48 128)"/></svg>
-        <svg x="110" y="150" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><use href="#person" fill="#1B257F" transform="translate(-12 4) rotate(-12 48 128)"/></svg>
+        <svg x="14" y="150" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#C9F0DE"/><use href="#person" fill="#7C6BC4" transform="translate(12 4) rotate(12 48 128)"/></svg>
+        <svg x="110" y="150" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#D9CCFF"/><use href="#person" fill="#7C6BC4" transform="translate(-12 4) rotate(-12 48 128)"/></svg>
 
-        <!-- Photo 3: a heart across the join -->
-        <svg x="14" y="286" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><use href="#person" fill="#1B257F" transform="translate(-6 10)"/></svg>
-        <svg x="110" y="286" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><use href="#person" fill="#1B257F" transform="translate(6 10)"/></svg>
-        <path d="M110 338c-30-21-17-44 0-28 17-16 30 7 0 28z" fill="#F6F7FB"/>
+        <svg x="14" y="286" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#CDE7FF"/><use href="#person" fill="#7C6BC4" transform="translate(-6 10)"/></svg>
+        <svg x="110" y="286" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD9C4"/><use href="#person" fill="#7C6BC4" transform="translate(6 10)"/></svg>
+        <path d="M110 338c-30-21-17-44 0-28 17-16 30 7 0 28z" fill="#FF8FB1" stroke="#FFFAF3" stroke-width="3"/>
 
-        <!-- Photo 4: waving -->
-        <svg x="14" y="422" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFD43B"/><g fill="#1B257F" stroke="#1B257F"><path d="M24 102 10 64" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="8" cy="56" r="9" stroke="none"/><use href="#person" stroke="none"/></g></svg>
-        <svg x="110" y="422" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FF5C8A"/><g fill="#1B257F" stroke="#1B257F"><path d="M72 102 86 64" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="88" cy="56" r="9" stroke="none"/><use href="#person" stroke="none"/></g></svg>
+        <svg x="14" y="422" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFE7A6"/><g fill="#7C6BC4" stroke="#7C6BC4"><path d="M24 102 10 64" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="8" cy="56" r="9" stroke="none"/><use href="#person" stroke="none"/></g></svg>
+        <svg x="110" y="422" width="96" height="128" viewBox="0 0 96 128"><rect width="96" height="128" fill="#FFC6D9"/><g fill="#7C6BC4" stroke="#7C6BC4"><path d="M72 102 86 64" stroke-width="12" stroke-linecap="round" fill="none"/><circle cx="88" cy="56" r="9" stroke="none"/><use href="#person" stroke="none"/></g></svg>
 
-        <text x="110" y="604" text-anchor="middle" font-family="Caveat, 'Segoe Print', 'Bradley Hand', cursive" font-weight="700" font-size="34" fill="#141A4D">together anyway</text>
+        <text x="110" y="604" text-anchor="middle" font-family="Caveat, 'Segoe Print', 'Bradley Hand', cursive" font-weight="700" font-size="34" fill="#4A3B63">together anyway</text>
       </svg>
     </div>
 
@@ -72,39 +101,70 @@
       <li><strong>Send the link</strong><span>The other person opens it on their phone or laptop.</span></li>
       <li><strong>Pose together</strong><span>One countdown runs on both screens, and both cameras snap at the same moment.</span></li>
     </ol>
+
+    <ul class="features">
+      <li style="--c: var(--rose)"><b aria-hidden="true">🎙️</b><strong>Talk while you pose</strong><span>Voice chat is built in, with mute and volume controls.</span></li>
+      <li style="--c: var(--lilac)"><b aria-hidden="true">💖</b><strong>Live reactions</strong><span>Send hearts and laughs that float across both screens.</span></li>
+      <li style="--c: var(--mint)"><b aria-hidden="true">🎨</b><strong>Make it yours</strong><span>Paper colours, patterns, filters, stickers, fonts and layouts.</span></li>
+      <li style="--c: var(--butter)"><b aria-hidden="true">💡</b><strong>Pose ideas</strong><span>Out of ideas? The booth suggests a pose for every photo.</span></li>
+    </ul>
   </section>
 
   <!-- Camera permission step -->
   <section class="view door" id="view-door" hidden>
-    <h1>Step into the booth</h1>
-    <p class="lede">Turn on your camera to go in. Video and photos travel only between your two devices. Nothing is saved on a server.</p>
-    <button class="btn btn-primary btn-big" id="enter" type="button">Turn on camera</button>
-    <p class="field-error" id="door-error" role="alert" hidden></p>
-    <p class="fine">Booth code <span class="code" id="door-code"></span></p>
+    <div class="card door-card">
+      <p class="kicker">Almost there</p>
+      <h1>Step into the booth</h1>
+      <p class="lede">Turn on your camera and microphone to go in. Video, voice and photos travel only between your two devices. Nothing is saved on a server.</p>
+      <div class="field">
+        <label for="my-name">Your name <span class="opt">(optional, shown on your video)</span></label>
+        <input id="my-name" type="text" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam">
+      </div>
+      <button class="btn btn-primary btn-big" id="enter" type="button">Turn on camera &amp; mic</button>
+      <p class="field-error" id="door-error" role="alert" hidden></p>
+      <p class="fine">Booth code <span class="code" id="door-code"></span><span id="door-limits"></span> · Tip: headphones stop echo.</p>
+    </div>
   </section>
 
   <!-- The booth -->
   <section class="view booth" id="view-booth" hidden>
-    <div class="frame" id="frame">
-      <div class="half me">
-        <video id="vid-me" autoplay playsinline muted></video>
-        <span class="tag tag-me">You</span>
-      </div>
-      <div class="half them">
-        <video id="vid-them" autoplay playsinline muted></video>
-        <div class="empty" id="them-empty">
-          <p id="them-empty-text">Waiting for the other person</p>
+    <p class="sign" id="sign">Booth open</p>
+
+    <div class="marquee" id="marquee">
+      <div class="frame" id="frame">
+        <div class="half me" id="half-me">
+          <video id="vid-me" autoplay playsinline muted></video>
+          <span class="tag tag-me" id="tag-me"><span id="name-me">You</span><svg class="tag-muted" aria-label="Microphone off"><use href="#i-mic-off"/></svg></span>
         </div>
-        <span class="tag tag-them">Them</span>
+        <div class="half them" id="half-them">
+          <video id="vid-them" autoplay playsinline></video>
+          <div class="empty" id="them-empty">
+            <p id="them-empty-text">Waiting for the other person</p>
+          </div>
+          <button class="hear" id="hear" type="button" hidden>🔊 Tap to hear them</button>
+          <span class="tag tag-them" id="tag-them"><span id="name-them">Them</span><svg class="tag-muted" aria-label="Their microphone is off"><use href="#i-mic-off"/></svg></span>
+        </div>
+        <p class="cue" id="cue" aria-live="polite"></p>
+        <p class="count" id="count" role="timer" aria-hidden="true"></p>
+        <p class="idea" id="idea" aria-live="polite"></p>
+        <div class="reactions" id="reactions" aria-hidden="true"></div>
+        <div class="flash" id="flash" aria-hidden="true"></div>
       </div>
-      <p class="cue" id="cue" aria-live="polite"></p>
-      <p class="count" id="count" role="timer" aria-hidden="true"></p>
-      <div class="flash" id="flash" aria-hidden="true"></div>
+    </div>
+
+    <div class="callbar">
+      <div class="call-btns">
+        <button class="icon-btn" id="mic" type="button" aria-pressed="true" title="Mute microphone (M)"><svg><use href="#i-mic"/></svg><span class="sr-only">Microphone</span></button>
+        <button class="icon-btn" id="speaker" type="button" aria-pressed="true" title="Mute their voice"><svg><use href="#i-speaker"/></svg><span class="sr-only">Their voice</span></button>
+        <input class="volume" id="volume" type="range" min="0" max="100" value="100" aria-label="Their volume">
+        <button class="icon-btn" id="sfx" type="button" aria-pressed="true" title="Booth sounds"><svg><use href="#i-note"/></svg><span class="sr-only">Booth sounds</span></button>
+      </div>
+      <div class="reacts" id="reacts" role="group" aria-label="Send a reaction"></div>
     </div>
 
     <div class="dots" id="dots" aria-hidden="true"></div>
 
-    <div class="deck" id="deck">
+    <div class="deck card" id="deck">
       <div class="invite" id="invite">
         <label for="invite-link">Send this link to the other person</label>
         <div class="join-row">
@@ -113,14 +173,37 @@
         </div>
       </div>
 
-      <div class="controls">
+      <div class="settings">
         <fieldset class="seg">
-          <legend>Photos per strip</legend>
+          <legend>Photos</legend>
           <label><input type="radio" name="poses" value="2"><span>2</span></label>
           <label><input type="radio" name="poses" value="3"><span>3</span></label>
           <label><input type="radio" name="poses" value="4" checked><span>4</span></label>
         </fieldset>
-        <button class="btn btn-quiet" id="start" type="button">Take photos alone</button>
+        <fieldset class="seg">
+          <legend>Countdown</legend>
+          <label><input type="radio" name="count" value="3" checked><span>3s</span></label>
+          <label><input type="radio" name="count" value="5"><span>5s</span></label>
+          <label><input type="radio" name="count" value="10"><span>10s</span></label>
+        </fieldset>
+        <label class="check"><input type="checkbox" id="ideas" checked><span>Pose ideas</span></label>
+        <div class="field name-field">
+          <label for="booth-name">Your name</label>
+          <input id="booth-name" type="text" maxlength="16" autocomplete="nickname" placeholder="You">
+        </div>
+      </div>
+
+      <fieldset class="chip-field">
+        <legend>Filter <span class="opt">(live preview)</span></legend>
+        <div class="chips" id="filters-booth"></div>
+      </fieldset>
+
+      <div class="go-row">
+        <div class="go-info">
+          <p class="limits" id="limits" hidden></p>
+          <p class="hint">Press <kbd>Space</kbd> to start · <kbd>M</kbd> to mute</p>
+        </div>
+        <button class="btn btn-quiet btn-big" id="start" type="button">Take photos alone</button>
       </div>
     </div>
   </section>
@@ -134,19 +217,56 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel card">
       <h1>Your strip is ready</h1>
+      <p class="synced" id="synced" hidden>✨ Changes show up on both screens</p>
 
-      <fieldset class="swatches">
-        <legend>Paper</legend>
-        <div class="swatch-row" id="papers"></div>
-      </fieldset>
+      <div class="tabs" role="tablist" aria-label="Customize">
+        <button role="tab" type="button" id="tab-paper" aria-controls="pane-paper" aria-selected="true">Paper</button>
+        <button role="tab" type="button" id="tab-photos" aria-controls="pane-photos" aria-selected="false" tabindex="-1">Photos</button>
+        <button role="tab" type="button" id="tab-words" aria-controls="pane-words" aria-selected="false" tabindex="-1">Words</button>
+      </div>
 
-      <label class="check"><input type="checkbox" id="bw"><span>Black and white</span></label>
+      <div class="pane" role="tabpanel" id="pane-paper" aria-labelledby="tab-paper">
+        <fieldset>
+          <legend>Colour</legend>
+          <div class="swatch-row" id="papers"></div>
+        </fieldset>
+        <fieldset class="chip-field">
+          <legend>Pattern</legend>
+          <div class="chips" id="patterns"></div>
+        </fieldset>
+        <fieldset class="chip-field">
+          <legend>Layout</legend>
+          <div class="chips" id="layouts"></div>
+        </fieldset>
+      </div>
 
-      <div class="field">
-        <label for="caption">Caption</label>
-        <input id="caption" type="text" maxlength="28" placeholder="Write something on it" autocomplete="off">
+      <div class="pane" role="tabpanel" id="pane-photos" aria-labelledby="tab-photos" hidden>
+        <fieldset class="chip-field">
+          <legend>Filter</legend>
+          <div class="chips" id="filters-result"></div>
+        </fieldset>
+        <fieldset class="chip-field">
+          <legend>Stickers</legend>
+          <div class="chips" id="stickers"></div>
+        </fieldset>
+        <fieldset class="chip-field">
+          <legend>Corners</legend>
+          <div class="chips" id="shapes"></div>
+        </fieldset>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-words" aria-labelledby="tab-words" hidden>
+        <div class="field">
+          <label for="caption">Caption</label>
+          <input id="caption" type="text" maxlength="28" placeholder="Write something on it" autocomplete="off">
+        </div>
+        <fieldset class="chip-field">
+          <legend>Font</legend>
+          <div class="chips" id="fonts"></div>
+        </fieldset>
+        <label class="check"><input type="checkbox" id="show-date" checked><span>Print the date</span></label>
       </div>
 
       <div class="actions">
@@ -154,17 +274,50 @@
         <button class="btn btn-quiet" id="share" type="button" hidden>Share</button>
         <button class="btn btn-quiet" id="again" type="button">Take more photos</button>
       </div>
+
+      <div class="gallery" id="gallery-wrap" hidden>
+        <p class="gallery-title">This visit</p>
+        <div class="gallery-row" id="gallery"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- After pressing Leave -->
+  <section class="view door" id="view-left" hidden>
+    <div class="card door-card">
+      <p class="kicker">See you soon</p>
+      <h1>You left the booth</h1>
+      <p class="lede" id="left-text">Your camera and microphone are off.</p>
+      <div class="actions">
+        <button class="btn btn-primary" id="rejoin" type="button">Go back in</button>
+        <button class="btn btn-quiet" id="see-strips" type="button">See your strips</button>
+        <button class="btn btn-quiet" id="new-booth" type="button">Open a new booth</button>
+        <a class="btn btn-quiet" href="./">Home</a>
+      </div>
     </div>
   </section>
 
   <!-- Something went wrong -->
   <section class="view door" id="view-error" hidden>
-    <h1 id="error-title">That didn't work</h1>
-    <p class="lede" id="error-text"></p>
-    <button class="btn btn-primary btn-big" id="error-action" type="button">Try again</button>
+    <div class="card door-card">
+      <h1 id="error-title">That didn't work</h1>
+      <p class="lede" id="error-text"></p>
+      <button class="btn btn-primary btn-big" id="error-action" type="button">Try again</button>
+    </div>
   </section>
 
 </main>
+
+<dialog class="modal card" id="leave-dialog" aria-labelledby="leave-title">
+  <h2 id="leave-title">Leave the booth?</h2>
+  <p>Your camera and microphone will turn off and the other person will see that you left. Save any strips you want to keep first.</p>
+  <div class="actions">
+    <button class="btn btn-primary" id="leave-yes" type="button">Leave</button>
+    <button class="btn btn-quiet" id="leave-no" type="button">Stay</button>
+  </div>
+</dialog>
+
+<p class="toast" id="toast" role="status" aria-live="polite"></p>
 
 <script src="vendor/peerjs.min.js"></script>
 <script src="config.js"></script>

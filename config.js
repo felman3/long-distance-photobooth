@@ -19,5 +19,12 @@ window.BOOTH_CONFIG = {
 
   // Booth codes are prefixed with this on the connection server so they don't
   // clash with other sites using the same free server. Change it to anything unique.
-  idPrefix: "ldbooth-"
+  idPrefix: "ldbooth-",
+
+  // Starting choices under "Booth options" on the landing page. People can
+  // change them before opening a booth; their last choice is remembered.
+  // defaultHours: how long a new booth link works (0 = no limit).
+  // defaultStrips: how many strips can be taken in one booth (0 = no limit).
+  defaultHours: 24,
+  defaultStrips: 10
 };
