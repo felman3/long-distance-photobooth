@@ -10,7 +10,10 @@ Two people in different places open the same link, see and hear each other live,
 - **Pose ideas**: a suggestion for every photo, the same on both screens.
 - **Countdown length**: 3, 5 or 10 seconds.
 - **Names**: each person can put their name on their video.
-- **Same place backgrounds**: each person is cut out of their own camera and put in front of one shared scene (beach, night sky, blossoms, clouds, hearts, cozy room), so you look like you're standing together. There's also a blur option. The cut-out runs in the browser with Google's MediaPipe; no video leaves the two devices.
+- **Together in one frame**: both people are cut out of their cameras and put into ONE picture, with no line between them. Each person drags themselves to move, pinches or scrolls to resize, and can step in front or behind. Both screens build the exact same photo.
+- **Backgrounds**: your own photo (shared with the other person, so you both stand in it), photo-style scenes (studio, city lights, golden hour, fairy lights, sunset, café) and drawn ones (beach, night sky, blossoms, clouds, hearts, cozy room). People are tinted slightly to match the scene's light and get a soft shadow. The cut-out runs in the browser with Google's MediaPipe; no video leaves the two devices.
+- **Background blur** like portrait mode: none, soft, medium or strong, for any scene or for your own room.
+- **Times and places**: the strip can print both people's local times and cities ("9:14 PM in Manila · 2:14 PM in London") and a countdown to the next time you meet ("47 days until we meet ♥"), which also shows in the booth.
 - **Filters** with a live preview: original, black and white, sepia, warm, cool, soft and pop.
 - **Strip styling**: eight pastel papers or any colour you pick, patterns, strip or grid layout, square or rounded corners, stickers, three caption fonts, and the date on or off. When two people are connected, every change shows up on both screens.
 - **Colour themes** for the site itself: blush, lilac, mint, sky and peach (the dots in the top corner).

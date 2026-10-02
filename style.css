@@ -527,6 +527,16 @@ body.shooting .marquee { animation: chase .5s linear infinite; }
   pointer-events: none;
 }
 
+/* Together in one frame: one canvas with both people, the halves only keep the labels. */
+.stage { display: none; position: absolute; inset: 0; width: 100%; height: 100%; filter: var(--live-filter); }
+.frame.one .stage { display: block; touch-action: none; cursor: grab; }
+.frame.one .stage.dragging { cursor: grabbing; }
+.frame.one .half { background: transparent; pointer-events: none; }
+.frame.one .half video { visibility: hidden; }
+.frame.one .hear { pointer-events: auto; }
+.frame.one .empty { align-items: end; padding-bottom: 3rem; }
+.frame.one .empty p { padding: .4rem .8rem; border-radius: 14px; background: rgba(255, 255, 255, .85); }
+
 .them video { opacity: 0; }
 .frame.has-them .them video { opacity: 1; transition: opacity .4s ease; }
 .frame.has-them .empty { display: none; }
@@ -742,6 +752,48 @@ body[data-conn="connected"] .empty p::before { display: none; }
 
 .reacts button:hover { background: #fff; transform: translateY(-3px) scale(1.12); }
 .reacts button:active { transform: scale(.85); }
+
+.arrange {
+  width: var(--w);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  padding: .6rem .9rem;
+  border-radius: 20px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+body.shooting .arrange { visibility: hidden; }
+.arrange-tip { margin: 0; font-size: .9rem; font-weight: 600; }
+.arrange-btns { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.size-field { display: inline-flex; align-items: center; gap: .4rem; }
+.size-field input { width: 6.5rem; accent-color: var(--accent-deep); }
+.btn-small { padding: .4rem .9rem; font-size: .875rem; }
+.scene-change { margin-top: .5rem; }
+
+.meet-badge {
+  margin: -.3rem 0 0;
+  padding: .2rem .8rem;
+  border-radius: 99px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  font-size: .875rem;
+  font-weight: 700;
+}
+
+input[type="date"] {
+  font: inherit;
+  display: block;
+  margin-top: .4rem;
+  padding: .55rem 1rem;
+  border-radius: 99px;
+  border: 2px solid var(--line);
+  background: rgba(255, 255, 255, .85);
+  color: var(--ink);
+}
 
 .dots { display: flex; gap: .5rem; min-height: .8rem; }
 

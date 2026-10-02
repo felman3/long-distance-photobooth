@@ -193,10 +193,66 @@
 
   const DEFAULT_LOOK = {
     paper: 'cream', pattern: 'plain', layout: 'strip', filter: 'none',
-    stickers: 'none', shape: 'square', font: 'hand', caption: '', date: true
+    stickers: 'none', shape: 'square', font: 'hand', caption: '', date: true,
+    times: true, meet: ''
   };
   let look = Object.assign({}, DEFAULT_LOOK, cleanLook(safeJson(store.get('look', '{}'))));
   look.caption = '';
+
+  /* ---------- Times and places ---------- */
+
+  function validTz(tz) {
+    if (typeof tz !== 'string' || !tz || tz.length > 64) return false;
+    try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true; } catch (e) { return false; }
+  }
+
+  const MY_TZ = (() => {
+    try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; return validTz(tz) ? tz : ''; } catch (e) { return ''; }
+  })();
+
+  function cleanCity(s) {
+    return String(s || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 24);
+  }
+
+  // "Asia/Manila" -> "Manila"
+  const tzCity = (tz) => (tz && tz.includes('/') && !tz.startsWith('Etc/') ? tz.split('/').pop().replace(/_/g, ' ') : '');
+
+  let myCity = cleanCity(store.get('city', '')) || tzCity(MY_TZ);
+  let partnerCity = '';
+  let partnerTz = '';
+
+  function timeIn(tz, when) {
+    try {
+      return new Date(when).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: tz }).replace(/\s/g, '\u00a0');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // "9:14 pm in Manila · 2:14 pm in London"
+  function timesLine(r) {
+    if (!look.times || !r || !r.places) return '';
+    return ['host', 'guest']
+      .map((k) => r.places[k])
+      .filter((p) => p && p.tz)
+      .map((p) => { const t = timeIn(p.tz, r.when); return t ? t + (p.city ? ' in ' + p.city : '') : ''; })
+      .filter(Boolean)
+      .join('  ·  ');
+  }
+
+  // "47 days until we meet ♥", counted from the day the photo was taken.
+  function meetLine(when) {
+    if (!look.meet) return '';
+    const [y, m, d] = look.meet.split('-').map(Number);
+    const target = new Date(y, m - 1, d);
+    const day = new Date(when || Date.now());
+    day.setHours(0, 0, 0, 0);
+    const days = Math.round((target - day) / 86400000);
+    if (!Number.isFinite(days) || days < 0) return '';
+    if (days === 0) return 'See you today ♥';
+    if (days === 1) return 'See you tomorrow ♥';
+    return days + ' days until we meet ♥';
+  }
 
   function safeJson(s) { try { return JSON.parse(s) || {}; } catch (e) { return {}; } }
 
@@ -619,8 +675,8 @@
     }
   }
 
-  function hello() { send({ type: 'hello', name: myName, mic: micOn, taken, fx: FX.on }); }
-  function sendSettings() { send({ type: 'settings', poses, count, ideas: ideasOn, bg: FX.bg }); }
+  function hello() { send({ type: 'hello', name: myName, mic: micOn, taken, fx: fxMode(), city: myCity, tz: MY_TZ }); }
+  function sendSettings() { send({ type: 'settings', poses, count, ideas: ideasOn, bg: FX.bg, one: FX.one, blur: FX.blurLevel }); }
   function sendLook() { send(Object.assign({ type: 'look' }, look)); }
 
   // Time on the host's clock, which both sides use for the countdown.
@@ -752,7 +808,10 @@
       } else {
         sendSettings();
         sendLook();
+        send({ type: 'front', who: FX.front });
       }
+      sendPlace(true);
+      if (FX.bg === 'custom') shareCustomScene();
     });
     c.on('data', onData);
     c.on('close', () => { if (conn === c) partnerGone(); });
@@ -805,6 +864,7 @@
     dropMeter('them');
     frame.classList.remove('has-them');
     setPartner('', true);
+    FX.partnerMode = 'off';
     $('half-them').classList.remove('fx');
     SFX.leave();
     toast(who + ' left the booth');
@@ -855,11 +915,23 @@
         break;
       case 'hello':
         setPartner(cleanName(d.name), d.mic !== false);
-        $('half-them').classList.toggle('fx', d.fx === true);
+        FX.partnerMode = ['one', 'split'].includes(d.fx) ? d.fx : 'off';
+        $('half-them').classList.toggle('fx', FX.partnerMode === 'split');
+        partnerCity = cleanCity(d.city);
+        partnerTz = validTz(d.tz) ? d.tz : '';
         if (Number.isInteger(d.taken)) setTaken(d.taken);
         break;
       case 'settings':
         applySettings(d);
+        break;
+      case 'place':
+        if (d.who === otherKey()) FX.place[d.who] = clampPlace(d);
+        break;
+      case 'front':
+        if (d.who === 'host' || d.who === 'guest') { FX.front = d.who; updateArrangeUI(); }
+        break;
+      case 'scene':
+        receiveScenePiece(d);
         break;
       case 'look':
         Object.assign(look, cleanLook(d));
@@ -901,7 +973,14 @@
     setRadio('poses', poses);
     setRadio('count', count);
     $('ideas').checked = ideasOn;
+    if (Number.isInteger(d.blur) && d.blur >= 0 && d.blur < BLUR_LEVELS.length && d.blur !== FX.blurLevel) setBlur(d.blur);
+    if (typeof d.one === 'boolean' && d.one !== FX.one) setOneFrame(d.one, true);
     if (typeof d.bg === 'string' && d.bg !== FX.bg) setBackground(d.bg, true);
+  }
+
+  function setBlur(level) {
+    FX.blurLevel = level;
+    setRadio('blur', String(level));
   }
 
   function floatReaction(e, mine) {
@@ -928,7 +1007,14 @@
 
   const BACKGROUNDS = [
     { id: 'none', name: 'Off' },
-    { id: 'blur', name: '💨 Blur' },
+    { id: 'blur', name: '💨 My room, blurred' },
+    { id: 'custom', name: '🖼️ Your photo…' },
+    { id: 'studio', name: '📷 Studio' },
+    { id: 'city', name: '🌃 City lights' },
+    { id: 'golden', name: '🌅 Golden hour' },
+    { id: 'fairy', name: '✨ Fairy lights' },
+    { id: 'sunset', name: '🌇 Sunset' },
+    { id: 'cafe', name: '☕ Café' },
     { id: 'beach', name: '🏖️ Beach' },
     { id: 'night', name: '🌙 Night sky' },
     { id: 'blossom', name: '🌸 Blossoms' },
@@ -941,6 +1027,7 @@
   const SCENE_H = SHOT_H;
   const MASK_W = 192;
   const MASK_H = 256;
+  const PACK_W = SHOT_W + SHOT_W / 2;
 
   const FX = {
     bg: 'none',
@@ -957,8 +1044,17 @@
     out: null,        // the final picture
     stream: null,     // out.captureStream()
     scenes: {},
+    blurred: {},
+    tints: {},
+    blurLevel: 0,
+    customUrl: null,
     timer: 0,
-    timerKind: ''
+    timerKind: '',
+    ready: false,     // the mask has been worked out at least once
+    one: false,       // "together in one frame" mode
+    front: 'host',    // who stands in front in one frame
+    place: { host: { x: 0.33, y: 1, s: 1 }, guest: { x: 0.67, y: 1, s: 1 } },
+    partnerMode: 'off'
   };
 
   const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
@@ -986,6 +1082,7 @@
     const g = c.getContext('2d');
     const W = SCENE_W, H = SCENE_H;
     const rand = rng('scene-' + id);
+    if (REAL_SCENES[id]) { REAL_SCENES[id](g, W, H, rand); return c; }
 
     if (id === 'beach') {
       g.fillStyle = grad(g, ['#FFB8D0', '#FFD6C2', '#FFF0C9'], 0, 0, 0, 520);
@@ -1175,6 +1272,341 @@
     return FX.scenes[id];
   }
 
+  /* Photo-style scenes. Real portrait photos usually have a soft, out-of-focus
+   * background, so these are built from the same ingredients: smooth light,
+   * bokeh discs, a little film grain and a vignette. */
+
+  const rgba = (c, a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
+
+  // Canvas blur: the native filter where the browser has it, else shrink and grow.
+  const CANVAS_FILTER = (() => {
+    try { const t = canvas(1, 1).getContext('2d'); t.filter = 'blur(2px)'; return t.filter === 'blur(2px)'; } catch (e) { return false; }
+  })();
+
+  function blurCanvas(src, px) {
+    const w = src.width, h = src.height;
+    const out = canvas(w, h);
+    const g = out.getContext('2d');
+    if (px <= 0) { g.drawImage(src, 0, 0); return out; }
+    if (CANVAS_FILTER) {
+      const m = px * 2;
+      g.filter = 'blur(' + px + 'px)';
+      g.drawImage(src, -m, -m, w + m * 2, h + m * 2);
+      g.filter = 'none';
+      return out;
+    }
+    const f = Math.max(2, px / 2);
+    const sw = Math.max(1, Math.round(w / f)), sh = Math.max(1, Math.round(h / f));
+    const a = canvas(sw, sh);
+    const ag = a.getContext('2d');
+    ag.imageSmoothingQuality = 'high';
+    ag.drawImage(src, 0, 0, sw, sh);
+    const b = canvas(Math.min(w, sw * 3), Math.min(h, sh * 3));
+    const bg = b.getContext('2d');
+    bg.imageSmoothingQuality = 'high';
+    bg.drawImage(a, 0, 0, b.width, b.height);
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(b, 0, 0, w, h);
+    return out;
+  }
+
+  function bokeh(g, x, y, r, col, a) {
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, rgba(col, a * 0.75));
+    gr.addColorStop(0.78, rgba(col, a));
+    gr.addColorStop(0.9, rgba(col, Math.min(1, a * 1.15)));
+    gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  function glow(g, x, y, r, col, a) {
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, rgba(col, a));
+    gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  function vignette(g, W, H, a) {
+    const gr = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
+    gr.addColorStop(0, 'rgba(20,10,30,0)');
+    gr.addColorStop(1, 'rgba(20,10,30,' + a + ')');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, W, H);
+  }
+
+  function grain(g, W, H, amt) {
+    const n = canvas(160, 160);
+    const ng = n.getContext('2d');
+    const id = ng.createImageData(160, 160);
+    const r = rng('grain');
+    for (let i = 0; i < 160 * 160; i++) {
+      const v = r() * 255;
+      id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v;
+      id.data[i * 4 + 3] = 255 * amt;
+    }
+    ng.putImageData(id, 0, 0);
+    g.save();
+    g.globalCompositeOperation = 'overlay';
+    g.fillStyle = g.createPattern(n, 'repeat');
+    g.fillRect(0, 0, W, H);
+    g.restore();
+  }
+
+  // Draw on a separate layer, blur it, and lay it down.
+  function softLayer(g, W, H, px, draw) {
+    const l = canvas(W, H);
+    draw(l.getContext('2d'));
+    g.drawImage(blurCanvas(l, px), 0, 0);
+  }
+
+  const REAL_SCENES = {
+    studio(g, W, H) {
+      const gr = g.createRadialGradient(W * 0.5, H * 0.4, 40, W * 0.5, H * 0.5, W * 0.8);
+      gr.addColorStop(0, '#FBF6FA');
+      gr.addColorStop(0.5, '#E6DAEA');
+      gr.addColorStop(1, '#B9A8C6');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      const fl = g.createLinearGradient(0, H * 0.68, 0, H);
+      fl.addColorStop(0, 'rgba(255,255,255,0)');
+      fl.addColorStop(0.35, 'rgba(255,255,255,.18)');
+      fl.addColorStop(1, 'rgba(80,60,100,.18)');
+      g.fillStyle = fl;
+      g.fillRect(0, H * 0.68, W, H * 0.32);
+      vignette(g, W, H, 0.38);
+      grain(g, W, H, 0.05);
+    },
+    city(g, W, H, rand) {
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, '#0A0F2E');
+      gr.addColorStop(0.55, '#1B1648');
+      gr.addColorStop(1, '#2C1836');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      softLayer(g, W, H, 10, (l) => {
+        for (let x = -20; x < W; x += 60 + rand() * 80) {
+          const bh = 160 + rand() * 360;
+          l.fillStyle = rand() < 0.5 ? 'rgba(44,36,90,.75)' : 'rgba(30,26,70,.75)';
+          l.fillRect(x, H - bh, 50 + rand() * 90, bh);
+        }
+      });
+      const cols = [[255, 190, 110], [255, 140, 90], [255, 222, 160], [120, 200, 255], [255, 120, 170], [200, 150, 255]];
+      g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 110; i++) {
+        bokeh(g, rand() * W, H * (0.25 + rand() * 0.78), 16 + rand() * 58, cols[Math.floor(rand() * cols.length)], 0.12 + rand() * 0.38);
+      }
+      g.globalCompositeOperation = 'source-over';
+      vignette(g, W, H, 0.45);
+      grain(g, W, H, 0.06);
+    },
+    golden(g, W, H, rand) {
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, '#FBE1B0');
+      gr.addColorStop(0.45, '#D9C68D');
+      gr.addColorStop(1, '#6F9460');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      softLayer(g, W, H, 22, (l) => {
+        const greens = ['#5E8C50', '#7FA86C', '#A3C285', '#4C7744'];
+        for (let i = 0; i < 70; i++) {
+          l.globalAlpha = 0.5 + rand() * 0.4;
+          blob(l, rand() * W, H * (0.25 + rand() * 0.8), 40 + rand() * 120, greens[Math.floor(rand() * greens.length)]);
+        }
+        l.globalAlpha = 1;
+      });
+      g.globalCompositeOperation = 'lighter';
+      glow(g, W * 0.16, H * 0.12, 700, [255, 238, 200], 0.85);
+      for (let i = 0; i < 46; i++) bokeh(g, rand() * W, rand() * H * 0.85, 14 + rand() * 46, [255, 232, 170], 0.1 + rand() * 0.3);
+      g.globalCompositeOperation = 'source-over';
+      const leak = g.createLinearGradient(0, 0, W, H);
+      leak.addColorStop(0, 'rgba(255,170,110,.28)');
+      leak.addColorStop(0.5, 'rgba(255,170,110,0)');
+      g.fillStyle = leak;
+      g.fillRect(0, 0, W, H);
+      vignette(g, W, H, 0.3);
+      grain(g, W, H, 0.05);
+    },
+    fairy(g, W, H, rand) {
+      const gr = g.createRadialGradient(W / 2, H * 0.45, 40, W / 2, H / 2, W * 0.75);
+      gr.addColorStop(0, '#45293F');
+      gr.addColorStop(1, '#140C18');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      const warm = [[255, 200, 120], [255, 170, 90], [255, 226, 170], [255, 190, 150]];
+      g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 80; i++) bokeh(g, rand() * W, rand() * H, 20 + rand() * 70, warm[Math.floor(rand() * warm.length)], 0.1 + rand() * 0.35);
+      g.globalCompositeOperation = 'source-over';
+      softLayer(g, W, H, 2, (l) => {
+        for (let row = 0; row < 3; row++) {
+          const y0 = 70 + row * 150, sag = 90 + rand() * 40;
+          l.strokeStyle = 'rgba(70,50,40,.7)';
+          l.lineWidth = 2;
+          l.beginPath(); l.moveTo(0, y0); l.quadraticCurveTo(W / 2, y0 + sag * 2, W, y0); l.stroke();
+          for (let i = 1; i < 22; i++) {
+            const t = i / 22, x = t * W, y = (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * (y0 + sag * 2) + t * t * y0;
+            l.save(); l.shadowColor = '#FFD98A'; l.shadowBlur = 18; blob(l, x, y + 6, 5, '#FFE7B0'); l.restore();
+          }
+        }
+      });
+      vignette(g, W, H, 0.4);
+      grain(g, W, H, 0.06);
+    },
+    sunset(g, W, H, rand) {
+      const hz = H * 0.78;
+      const gr = g.createLinearGradient(0, 0, 0, hz);
+      gr.addColorStop(0, '#26336F');
+      gr.addColorStop(0.3, '#6A4B98');
+      gr.addColorStop(0.58, '#E26E9E');
+      gr.addColorStop(0.82, '#FF9E6A');
+      gr.addColorStop(1, '#FFD68C');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, hz);
+      softLayer(g, W, H, 14, (l) => {
+        for (let i = 0; i < 26; i++) {
+          l.fillStyle = rand() < 0.5 ? 'rgba(247,160,184,.45)' : 'rgba(130,100,180,.4)';
+          l.beginPath();
+          l.ellipse(rand() * W, 120 + rand() * (hz - 260), 90 + rand() * 200, 14 + rand() * 26, 0, 0, Math.PI * 2);
+          l.fill();
+        }
+      });
+      g.globalCompositeOperation = 'lighter';
+      glow(g, W / 2, hz, 380, [255, 228, 170], 0.9);
+      g.globalCompositeOperation = 'source-over';
+      blob(g, W / 2, hz - 10, 52, '#FFF1CC');
+      const sea = g.createLinearGradient(0, hz, 0, H);
+      sea.addColorStop(0, '#4A3466');
+      sea.addColorStop(1, '#1C1534');
+      g.fillStyle = sea;
+      g.fillRect(0, hz, W, H - hz);
+      g.fillStyle = 'rgba(255,214,150,.55)';
+      for (let y = hz + 6; y < H; y += 9) {
+        const w = 40 + rand() * 150 * (1 - (y - hz) / (H - hz) * 0.5);
+        g.fillRect(W / 2 - w / 2 + (rand() - 0.5) * 40, y, w, 3);
+      }
+      vignette(g, W, H, 0.3);
+      grain(g, W, H, 0.05);
+    },
+    cafe(g, W, H, rand) {
+      const gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, '#3D2719');
+      gr.addColorStop(0.5, '#5C3B25');
+      gr.addColorStop(1, '#2A1A10');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, W, H);
+      softLayer(g, W, H, 18, (l) => {
+        [[80, 120], [470, 100], [860, 130]].forEach(([x, y]) => {
+          l.fillStyle = 'rgba(255,232,196,.38)';
+          l.fillRect(x, y, 260, 320);
+          l.fillStyle = 'rgba(120,160,120,.25)';
+          l.fillRect(x + 20, y + 200, 220, 110);
+        });
+        l.fillStyle = 'rgba(30,18,10,.8)';
+        l.fillRect(0, H * 0.74, W, H * 0.26);
+        l.fillStyle = 'rgba(255,200,140,.25)';
+        l.fillRect(0, H * 0.74, W, 8);
+      });
+      g.globalCompositeOperation = 'lighter';
+      [200, 520, 840, 1100].forEach((x) => glow(g, x + (rand() - 0.5) * 40, 70 + rand() * 60, 170, [255, 196, 120], 0.8));
+      const amb = [[255, 190, 110], [255, 160, 80], [255, 220, 160]];
+      for (let i = 0; i < 50; i++) bokeh(g, rand() * W, rand() * H * 0.8, 14 + rand() * 46, amb[Math.floor(rand() * amb.length)], 0.1 + rand() * 0.32);
+      g.globalCompositeOperation = 'source-over';
+      vignette(g, W, H, 0.45);
+      grain(g, W, H, 0.06);
+    }
+  };
+
+  const BLUR_LEVELS = [
+    { id: '0', name: 'None', px: 0, room: 0 },
+    { id: '1', name: 'Soft', px: 4, room: 8 },
+    { id: '2', name: 'Medium', px: 9, room: 16 },
+    { id: '3', name: 'Strong', px: 18, room: 30 }
+  ];
+
+  // A scene at the chosen blur level, made once and kept.
+  function sceneFor(id, level) {
+    if (id === 'custom' && !FX.scenes.custom) id = 'studio';
+    const lv = BLUR_LEVELS[level] || BLUR_LEVELS[0];
+    if (!lv.px) return sceneArt(id);
+    const key = id + '|' + lv.id;
+    if (!FX.blurred[key]) FX.blurred[key] = blurCanvas(sceneArt(id), lv.px);
+    return FX.blurred[key];
+  }
+
+  // The scene's average colour, used to tint people so they match its light.
+  function sceneTint(id) {
+    if (id === 'custom' && !FX.scenes.custom) id = 'studio';
+    if (!FX.tints[id]) {
+      const c = canvas(1, 1);
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(sceneArt(id), 0, 0, 1, 1);
+      const d = g.getImageData(0, 0, 1, 1).data;
+      FX.tints[id] = 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')';
+    }
+    return FX.tints[id];
+  }
+
+  /* Your own photo as the scene. It's sent to the other person so you both
+   * stand in the same place. */
+
+  function photoToScene(file) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const im = new Image();
+      im.onload = () => {
+        const c = canvas(SCENE_W, SCENE_H);
+        const g = c.getContext('2d');
+        const sc = Math.max(SCENE_W / im.naturalWidth, SCENE_H / im.naturalHeight);
+        const w = im.naturalWidth * sc, h = im.naturalHeight * sc;
+        g.drawImage(im, (SCENE_W - w) / 2, (SCENE_H - h) / 2, w, h);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      im.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      im.src = url;
+    });
+  }
+
+  async function setCustomScene(url) {
+    const im = await loadImage(url);
+    if (!im) return false;
+    const c = canvas(SCENE_W, SCENE_H);
+    c.getContext('2d').drawImage(im, 0, 0, SCENE_W, SCENE_H);
+    FX.scenes.custom = c;
+    FX.customUrl = url;
+    for (const k of Object.keys(FX.blurred)) if (k.startsWith('custom|')) delete FX.blurred[k];
+    delete FX.tints.custom;
+    return true;
+  }
+
+  function shareCustomScene() {
+    if (!FX.customUrl || !isConnected()) return;
+    const id = Math.random().toString(36).slice(2, 10);
+    const url = FX.customUrl;
+    const n = Math.ceil(url.length / CHUNK);
+    for (let i = 0; i < n; i++) send({ type: 'scene', id, i, n, d: url.slice(i * CHUNK, (i + 1) * CHUNK) });
+  }
+
+  const scenePieces = {};
+  function receiveScenePiece(d) {
+    if (typeof d.id !== 'string' || !Number.isInteger(d.n) || d.n < 1 || d.n > 120) return;
+    if (!Number.isInteger(d.i) || d.i < 0 || d.i >= d.n || typeof d.d !== 'string') return;
+    for (const k of Object.keys(scenePieces)) if (k !== d.id) delete scenePieces[k]; // keep only the newest
+    const parts = scenePieces[d.id] || (scenePieces[d.id] = new Array(d.n).fill(null));
+    if (parts.length !== d.n) return;
+    parts[d.i] = d.d;
+    if (parts.every((p) => p !== null)) {
+      delete scenePieces[d.id];
+      const url = parts.join('');
+      if (url.startsWith('data:image/jpeg;base64,')) {
+        setCustomScene(url).then((ok) => { if (ok) toast('They shared a photo for your background 🖼️'); });
+      }
+    }
+  }
+
   async function loadSegmenter() {
     if (FX.seg) return FX.seg;
     if (!FX.loading) {
@@ -1213,6 +1645,11 @@
     FX.blur = canvas(30, 40);
     FX.mask = canvas(MASK_W, MASK_H);
     FX.stream = FX.out.captureStream(30);
+    // "One frame" mode sends the camera with its cut-out mask beside it, since
+    // video can't carry transparency: [ camera 600x800 | mask 300x400 ].
+    FX.maskVis = canvas(MASK_W, MASK_H);
+    FX.pack = canvas(PACK_W, SHOT_H);
+    FX.packStream = FX.pack.captureStream(30);
   }
 
   function fxSchedule() {
@@ -1277,85 +1714,145 @@
           d[i * 4 + 3] = a * 255;
         }
         mg.putImageData(FX.maskData, 0, 0);
+        FX.ready = true;
       });
     } catch (e) {
       console.warn('segmentation failed', e);
     }
 
-    // 3. Background: our half of the scene, or our own room blurred.
-    const og = FX.out.getContext('2d');
-    if (FX.bg === 'blur') {
-      const bg = FX.blur.getContext('2d');
-      bg.drawImage(FX.src, 0, 0, FX.blur.width, FX.blur.height);
-      og.imageSmoothingEnabled = true;
-      og.drawImage(FX.blur, 0, 0, SHOT_W, SHOT_H);
-    } else {
-      const sx = role === 'guest' ? SHOT_W : 0;
-      og.drawImage(sceneArt(FX.bg), sx, 0, SHOT_W, SHOT_H, 0, 0, SHOT_W, SHOT_H);
-    }
-
-    // 4. The person on top.
+    // 3. The person, cut out.
     const pg = FX.person.getContext('2d');
     pg.globalCompositeOperation = 'source-over';
     pg.clearRect(0, 0, SHOT_W, SHOT_H);
     pg.drawImage(FX.src, 0, 0);
     pg.globalCompositeOperation = 'destination-in';
     pg.drawImage(FX.mask, 0, 0, SHOT_W, SHOT_H);
+    // Fade out where the body runs off the camera's edges, so there's no hard line.
+    if (!FX.edge) {
+      FX.edge = canvas(SHOT_W, SHOT_H);
+      const eg = FX.edge.getContext('2d');
+      const hz = eg.createLinearGradient(0, 0, SHOT_W, 0);
+      hz.addColorStop(0, 'rgba(0,0,0,0)');
+      hz.addColorStop(0.08, '#000');
+      hz.addColorStop(0.92, '#000');
+      hz.addColorStop(1, 'rgba(0,0,0,0)');
+      eg.fillStyle = hz;
+      eg.fillRect(0, 0, SHOT_W, SHOT_H);
+      eg.globalCompositeOperation = 'destination-in';
+      const vt = eg.createLinearGradient(0, 0, 0, SHOT_H);
+      vt.addColorStop(0, '#000');
+      vt.addColorStop(0.9, '#000');
+      vt.addColorStop(1, 'rgba(0,0,0,0)');
+      eg.fillStyle = vt;
+      eg.fillRect(0, 0, SHOT_W, SHOT_H);
+    }
+    pg.drawImage(FX.edge, 0, 0);
+    // Match the scene's light a little, so the person looks like they're there.
+    const tintScene = FX.one ? oneScene() : (FX.bg !== 'blur' ? FX.bg : null);
+    if (tintScene) {
+      pg.globalCompositeOperation = 'source-atop';
+      pg.globalAlpha = 0.14;
+      pg.fillStyle = sceneTint(tintScene);
+      pg.fillRect(0, 0, SHOT_W, SHOT_H);
+      pg.globalAlpha = 1;
+    }
     pg.globalCompositeOperation = 'source-over';
+
+    if (FX.one) {
+      // 4a. Pack camera + mask for the other person.
+      const mv = FX.maskVis.getContext('2d');
+      mv.globalCompositeOperation = 'copy';
+      mv.drawImage(FX.mask, 0, 0, MASK_W, MASK_H);
+      mv.globalCompositeOperation = 'source-in';
+      mv.fillStyle = '#fff';
+      mv.fillRect(0, 0, MASK_W, MASK_H);
+      mv.globalCompositeOperation = 'source-over';
+      const kg = FX.pack.getContext('2d');
+      kg.drawImage(FX.src, 0, 0);
+      kg.fillStyle = '#000';
+      kg.fillRect(SHOT_W, 0, PACK_W - SHOT_W, SHOT_H);
+      kg.drawImage(FX.maskVis, SHOT_W, 0, PACK_W - SHOT_W, SHOT_H / 2);
+      return;
+    }
+
+    // 4b. Side by side: our half of the scene (or our own room blurred), person on top.
+    const og = FX.out.getContext('2d');
+    if (FX.bg === 'blur') {
+      // Our own room, out of focus. Stronger blur = a smaller in-between picture.
+      const f = (BLUR_LEVELS[FX.blurLevel] || BLUR_LEVELS[2]).room || 16;
+      const bw = Math.max(4, Math.round(SHOT_W / f)), bh = Math.max(4, Math.round(SHOT_H / f));
+      if (FX.blur.width !== bw) { FX.blur.width = bw; FX.blur.height = bh; }
+      const bg = FX.blur.getContext('2d');
+      bg.imageSmoothingQuality = 'high';
+      bg.drawImage(FX.src, 0, 0, bw, bh);
+      og.imageSmoothingEnabled = true;
+      og.imageSmoothingQuality = 'high';
+      og.drawImage(FX.blur, 0, 0, SHOT_W, SHOT_H);
+    } else {
+      const sx = role === 'guest' ? SHOT_W : 0;
+      og.drawImage(sceneFor(FX.bg, FX.blurLevel), sx, 0, SHOT_W, SHOT_H, 0, 0, SHOT_W, SHOT_H);
+    }
     og.drawImage(FX.person, 0, 0);
   }
 
-  // The stream we send: the canvas picture (when a background is on) plus our voice.
+  function currentVideoTrack() {
+    if (!localStream) return null;
+    if (!FX.on) return localStream.getVideoTracks()[0];
+    return (FX.one ? FX.packStream : FX.stream).getVideoTracks()[0];
+  }
+
+  // The stream we send: our picture plus our voice.
   function outgoing() {
-    if (!localStream) return localStream;
-    if (!FX.on) return localStream;
-    return new MediaStream([FX.stream.getVideoTracks()[0], ...localStream.getAudioTracks()]);
+    if (!localStream || !FX.on) return localStream;
+    return new MediaStream([currentVideoTrack(), ...localStream.getAudioTracks()]);
   }
 
   function swapSentVideo() {
     const pc = call && call.peerConnection;
-    if (!pc || !localStream) return;
-    const track = FX.on ? FX.stream.getVideoTracks()[0] : localStream.getVideoTracks()[0];
+    const track = currentVideoTrack();
+    if (!pc || !track) return;
     for (const s of pc.getSenders()) {
       if (s.track && s.track.kind === 'video' && s.track !== track) s.replaceTrack(track).catch((e) => console.warn('replaceTrack', e));
     }
   }
 
+  const fxMode = () => (FX.on ? (FX.one ? 'one' : 'split') : 'off');
+
   function fxApplyView() {
-    vidMe.srcObject = FX.on ? FX.stream : localStream;
-    vidMe.play().catch(() => {});
-    $('half-me').classList.toggle('fx', FX.on);
+    const split = FX.on && !FX.one;
+    const want = split ? FX.stream : localStream;
+    if (vidMe.srcObject !== want) {
+      vidMe.srcObject = want;
+      vidMe.play().catch(() => {});
+    }
+    $('half-me').classList.toggle('fx', split);
     swapSentVideo();
     hello();
   }
 
-  async function setBackground(id, quiet) {
-    if (!BACKGROUNDS.some((b) => b.id === id)) return;
-    FX.bg = id;
-    setRadio('bg', id);
-    if (id === 'none') {
-      fxHalt();
-      return;
-    }
+  const fxWanted = () => FX.bg !== 'none' || FX.one;
+
+  // Start or stop the cut-out to match the chosen background and pose mode.
+  async function ensureFx(quiet) {
+    if (!fxWanted()) { fxHalt(); return; }
     if (!localStream) return; // starts once the camera is on
     const chipsEl = $('backgrounds');
     if (!FX.seg) {
       chipsEl.classList.add('loading');
-      if (!quiet) toast('Loading backgrounds…');
+      if (!quiet) toast('Loading the cut-out…');
     }
     try {
       await loadSegmenter();
     } catch (e) {
       console.warn('background model failed to load', e);
-      chipsEl.classList.remove('loading');
-      FX.bg = 'none';
-      setRadio('bg', 'none');
+      if (FX.bg !== 'none') { FX.bg = 'none'; setRadio('bg', 'none'); }
       toast('Backgrounds couldn\'t load on this device. Check your connection and try again.');
+      fxHalt();
       return;
     } finally {
       chipsEl.classList.remove('loading');
     }
-    if (FX.bg === 'none' || !localStream) return; // changed while loading
+    if (!fxWanted() || !localStream) return; // changed while loading
     fxSetup();
     if (FX.raw.srcObject !== localStream) {
       FX.raw.srcObject = localStream;
@@ -1363,19 +1860,262 @@
     }
     if (!FX.on) {
       FX.on = true;
-      fxApplyView();
       fxCancel();
       fxSchedule();
     }
+    fxApplyView();
+  }
+
+  async function setBackground(id, quiet) {
+    if (!BACKGROUNDS.some((b) => b.id === id)) return;
+    FX.bg = id;
+    setRadio('bg', id);
+    await ensureFx(quiet);
   }
 
   // Back to the plain camera.
   function fxHalt() {
     const was = FX.on;
     FX.on = false;
+    FX.ready = false;
     fxCancel();
     if (was && localStream) fxApplyView();
     else $('half-me').classList.remove('fx');
+  }
+
+  /* ---------- Together in one frame ----------
+   * Both people are cut out and drawn into ONE picture of the scene, with no
+   * line between them. Each person moves and sizes only themselves; positions
+   * are kept per side ("host" is whoever opened the booth first). */
+
+  const MODES = [
+    { id: 'split', name: 'Side by side' },
+    { id: 'one', name: '✨ Together in one frame' }
+  ];
+  const DEFAULT_PLACE = { host: { x: 0.33, y: 1, s: 1 }, guest: { x: 0.67, y: 1, s: 1 } };
+  const STAGE_W = SHOT_W * 2;
+  const STAGE_H = SHOT_H;
+  const stage = $('stage');
+
+  const myKey = () => (role === 'guest' ? 'guest' : 'host');
+  const otherKey = () => (role === 'guest' ? 'host' : 'guest');
+  const oneScene = () => (FX.bg !== 'none' && FX.bg !== 'blur' ? FX.bg : 'studio');
+
+  function clampPlace(p) {
+    const n = (v, lo, hi, d) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+    return { x: n(p.x, 0, 1, 0.5), y: n(p.y, 0.45, 1.45, 1), s: n(p.s, 0.5, 1.6, 1) };
+  }
+
+  // A cut-out person (600x800 with transparency) at its place in the scene.
+  function drawCut(g, img, p) {
+    const w = SHOT_W * p.s, h = SHOT_H * p.s;
+    g.save();
+    g.shadowColor = 'rgba(20, 10, 30, .35)';
+    g.shadowBlur = 28 * p.s;
+    g.shadowOffsetX = 6 * p.s;
+    g.shadowOffsetY = 10 * p.s;
+    g.drawImage(img, p.x * STAGE_W - w / 2, p.y * STAGE_H - h, w, h);
+    g.restore();
+  }
+
+  // Someone without a cut-out appears as a little photo card instead.
+  function drawCard(g, src, sw, sh, p, mirror) {
+    if (!sw || !sh) return;
+    const w = 420 * p.s, h = 560 * p.s, pad = 14 * p.s;
+    const x = p.x * STAGE_W - w / 2, y = p.y * STAGE_H - h - 30 * p.s;
+    g.save();
+    g.shadowColor = 'rgba(63, 49, 87, .3)';
+    g.shadowBlur = 24;
+    g.fillStyle = '#FFFAF3';
+    roundRect(g, x - pad, y - pad, w + pad * 2, h + pad * 2, 18);
+    g.fill();
+    g.shadowColor = 'transparent';
+    roundRect(g, x, y, w, h, 10);
+    g.clip();
+    const sc = Math.max(w / sw, h / sh);
+    const dw = sw * sc, dh = sh * sc;
+    if (mirror) {
+      g.translate(x + w, y);
+      g.scale(-1, 1);
+      g.drawImage(src, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    } else {
+      g.drawImage(src, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    }
+    g.restore();
+  }
+
+  // Rebuild the other person's cut-out from their packed video.
+  function unpackThem() {
+    const v = vidThem;
+    const vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh) return null;
+    if (!FX.themPerson) {
+      FX.themPerson = canvas(SHOT_W, SHOT_H);
+      FX.themMask = canvas(MASK_W, MASK_H);
+    }
+    const camW = vw * SHOT_W / PACK_W;
+    const mg = FX.themMask.getContext('2d', { willReadFrequently: true });
+    mg.globalCompositeOperation = 'copy';
+    mg.drawImage(v, camW, 0, vw - camW, vh / 2, 0, 0, MASK_W, MASK_H);
+    const px = mg.getImageData(0, 0, MASK_W, MASK_H);
+    const a = px.data;
+    for (let i = 0; i < a.length; i += 4) {
+      a[i + 3] = a[i];
+      a[i] = a[i + 1] = a[i + 2] = 0;
+    }
+    mg.putImageData(px, 0, 0);
+    const pg = FX.themPerson.getContext('2d');
+    pg.globalCompositeOperation = 'copy';
+    pg.drawImage(v, 0, 0, camW, vh, 0, 0, SHOT_W, SHOT_H);
+    pg.globalCompositeOperation = 'destination-in';
+    pg.drawImage(FX.themMask, 0, 0, SHOT_W, SHOT_H);
+    pg.globalCompositeOperation = 'source-over';
+    return FX.themPerson;
+  }
+
+  function renderStage() {
+    const g = stage.getContext('2d');
+    g.drawImage(sceneFor(oneScene(), FX.blurLevel), 0, 0, STAGE_W, STAGE_H);
+    const me = myKey();
+    const order = FX.front === 'host' ? ['guest', 'host'] : ['host', 'guest']; // back first
+    for (const who of order) {
+      const p = FX.place[who];
+      if (who === me) {
+        if (FX.on && FX.ready) drawCut(g, FX.person, p);
+        else drawCard(g, vidMe, vidMe.videoWidth, vidMe.videoHeight, p, true);
+      } else if (frame.classList.contains('has-them')) {
+        if (FX.partnerMode === 'one') {
+          const cut = unpackThem();
+          if (cut) drawCut(g, cut, p);
+        } else {
+          // A plain camera arrives unmirrored; a side-by-side picture is already mirrored.
+          drawCard(g, vidThem, vidThem.videoWidth, vidThem.videoHeight, p, FX.partnerMode === 'off');
+        }
+      }
+    }
+  }
+
+  let stageRaf = 0;
+  function stageLoop() {
+    stageRaf = 0;
+    if (!FX.one) return;
+    stageRaf = requestAnimationFrame(stageLoop);
+    if (!$('view-booth').hidden) renderStage();
+  }
+
+  function setOneFrame(on, quiet) {
+    FX.one = !!on;
+    setRadio('mode', FX.one ? 'one' : 'split');
+    frame.classList.toggle('one', FX.one);
+    $('arrange').hidden = !FX.one;
+    if (FX.one && !stageRaf) stageRaf = requestAnimationFrame(stageLoop);
+    if (!FX.one && stageRaf) { cancelAnimationFrame(stageRaf); stageRaf = 0; }
+    updateArrangeUI();
+    ensureFx(quiet);
+  }
+
+  function updateArrangeUI() {
+    const p = FX.place[myKey()];
+    $('size').value = String(Math.round(p.s * 100));
+    $('front').textContent = FX.front === myKey() ? 'Step back' : 'Bring me to front';
+  }
+
+  let placeSent = 0;
+  let placeTimer = 0;
+  function sendPlace(now) {
+    const go = () => {
+      placeSent = Date.now();
+      const k = myKey();
+      send(Object.assign({ type: 'place', who: k }, FX.place[k]));
+    };
+    clearTimeout(placeTimer);
+    if (now || Date.now() - placeSent > 60) go();
+    else placeTimer = setTimeout(go, 60);
+  }
+
+  function moveMe(patch) {
+    const k = myKey();
+    FX.place[k] = clampPlace(Object.assign({}, FX.place[k], patch));
+    updateArrangeUI();
+    sendPlace(false);
+  }
+
+  // Drag to move, pinch or scroll to resize. Only ever moves yourself.
+  const pointers = new Map();
+  let pinch = null;
+  const pinchDist = () => {
+    const [a, b] = Array.from(pointers.values());
+    return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  };
+  const canArrange = () => FX.one && !document.body.classList.contains('shooting');
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (!canArrange()) return;
+    try { stage.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) pinch = { d: pinchDist(), s: FX.place[myKey()].s };
+    stage.classList.add('dragging');
+  });
+  stage.addEventListener('pointermove', (e) => {
+    const prev = pointers.get(e.pointerId);
+    if (!prev || !canArrange()) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const rect = stage.getBoundingClientRect();
+    const p = FX.place[myKey()];
+    if (pointers.size === 1) {
+      moveMe({ x: p.x + (e.clientX - prev.x) / rect.width, y: p.y + (e.clientY - prev.y) / rect.height });
+    } else if (pinch) {
+      moveMe({ s: pinch.s * pinchDist() / pinch.d });
+    }
+  });
+  const endPointer = (e) => {
+    if (!pointers.delete(e.pointerId)) return;
+    if (pointers.size < 2) pinch = null;
+    if (!pointers.size) stage.classList.remove('dragging');
+    sendPlace(true);
+  };
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', endPointer);
+  stage.addEventListener('wheel', (e) => {
+    if (!canArrange()) return;
+    e.preventDefault();
+    moveMe({ s: FX.place[myKey()].s * (e.deltaY < 0 ? 1.05 : 1 / 1.05) });
+  }, { passive: false });
+
+  $('size').addEventListener('input', (e) => moveMe({ s: Number(e.target.value) / 100 }));
+  $('front').addEventListener('click', () => {
+    FX.front = FX.front === myKey() ? otherKey() : myKey();
+    updateArrangeUI();
+    send({ type: 'front', who: FX.front });
+  });
+  $('place-reset').addEventListener('click', () => moveMe(DEFAULT_PLACE[myKey()]));
+
+  // Put the photos of one pose together into one picture. Both screens run this
+  // with the same inputs (sent by the host at the start), so the results match.
+  async function composeOne(s, k) {
+    const c = canvas(STAGE_W, STAGE_H);
+    const g = c.getContext('2d');
+    g.drawImage(sceneFor(s.scene, s.blur), 0, 0, STAGE_W, STAGE_H);
+    const urls = { [s.mineKey]: s.mine[k], [s.mineKey === 'host' ? 'guest' : 'host']: s.theirs[k] };
+    const order = s.front === 'host' ? ['guest', 'host'] : ['host', 'guest'];
+    for (const who of order) {
+      const url = urls[who];
+      if (!url) continue;
+      const im = await loadImage(url);
+      if (!im) continue;
+      if (url.startsWith('data:image/jpeg')) drawCard(g, im, im.naturalWidth, im.naturalHeight, s.place[who], false);
+      else drawCut(g, im, s.place[who]);
+    }
+    return c.toDataURL('image/jpeg', 0.9);
+  }
+
+  // Cut-outs need transparency: WebP where the browser can make it, else PNG.
+  let cutType = null;
+  function cutDataUrl(c) {
+    if (!cutType) {
+      try { cutType = canvas(2, 2).toDataURL('image/webp').startsWith('data:image/webp') ? 'image/webp' : 'image/png'; } catch (e) { cutType = 'image/png'; }
+    }
+    return cutType === 'image/webp' ? c.toDataURL('image/webp', 0.9) : c.toDataURL('image/png');
   }
 
   /* ---------- Taking the photos ---------- */
@@ -1398,7 +2138,12 @@
       poses,
       count,
       ideas: ideasOn ? shuffle(IDEAS.map((_, i) => i)).slice(0, poses) : null,
-      n: taken + 1
+      n: taken + 1,
+      one: FX.one,
+      scene: oneScene(),
+      blur: FX.blurLevel,
+      place: { host: Object.assign({}, FX.place.host), guest: Object.assign({}, FX.place.guest) },
+      front: FX.front
     };
     send(msg);
     runSession(msg);
@@ -1426,7 +2171,16 @@
       theirs: [],
       pieces: {},
       solo: !isConnected(),
-      done: false
+      done: false,
+      one: m.one === true,
+      scene: BACKGROUNDS.some((b) => b.id === m.scene) && m.scene !== 'none' && m.scene !== 'blur' ? m.scene : 'studio',
+      blur: Number.isInteger(m.blur) && m.blur >= 0 && m.blur < BLUR_LEVELS.length ? m.blur : 0,
+      place: {
+        host: clampPlace((m.place && m.place.host) || DEFAULT_PLACE.host),
+        guest: clampPlace((m.place && m.place.guest) || DEFAULT_PLACE.guest)
+      },
+      front: m.front === 'guest' ? 'guest' : 'host',
+      mineKey: myKey()
     };
     show('booth');
     document.body.classList.add('shooting');
@@ -1498,7 +2252,10 @@
     const vh = vidMe.videoHeight;
     g.fillStyle = '#D9CCFF';
     g.fillRect(0, 0, SHOT_W, SHOT_H);
-    if (FX.on) {
+    let url = null;
+    if (s.one && FX.on && FX.ready) {
+      url = cutDataUrl(FX.person); // just the person, with transparency
+    } else if (FX.on && !FX.one) {
       g.drawImage(FX.out, 0, 0); // already cut out, mirrored and on the scene
     } else if (vw && vh) {
       const scale = Math.max(SHOT_W / vw, SHOT_H / vh);
@@ -1508,7 +2265,7 @@
       g.scale(-1, 1);
       g.drawImage(vidMe, (SHOT_W - dw) / 2, (SHOT_H - dh) / 2, dw, dh);
     }
-    const url = c.toDataURL('image/jpeg', 0.86);
+    if (!url) url = c.toDataURL('image/jpeg', 0.86);
     s.mine[k] = url;
 
     SFX.shutter();
@@ -1532,14 +2289,14 @@
     if (!s || d.sid !== s.sid) return;
     const { k, i, n } = d;
     if (!Number.isInteger(k) || k < 0 || k >= s.poses) return;
-    if (!Number.isInteger(n) || n < 1 || n > 200) return;
+    if (!Number.isInteger(n) || n < 1 || n > 400) return;
     if (!Number.isInteger(i) || i < 0 || i >= n || typeof d.d !== 'string') return;
     const parts = s.pieces[k] || (s.pieces[k] = new Array(n).fill(null));
     if (parts.length !== n) return;
     parts[i] = d.d;
     if (parts.every((p) => p !== null)) {
       const url = parts.join('');
-      if (url.startsWith('data:image/jpeg;base64,')) s.theirs[k] = url;
+      if (/^data:image\/(jpeg|png|webp);base64,/.test(url)) s.theirs[k] = url;
       delete s.pieces[k];
     }
   }
@@ -1548,7 +2305,7 @@
   function develop(s) {
     setText(cueEl, 'Printing your strip');
     $('sign').textContent = 'Printing…';
-    const deadline = Date.now() + 8000;
+    const deadline = Date.now() + (s.one ? 15000 : 8000);
     const wait = setInterval(() => {
       if (session !== s) { clearInterval(wait); return; }
       const got = s.theirs.filter(Boolean).length;
@@ -1559,23 +2316,38 @@
     }, 100);
   }
 
-  function finish(s) {
+  async function finish(s) {
     s.done = true;
+    const haveTheirs = s.theirs.some(Boolean);
+    const mineLeft = s.mineKey === 'host';
+    const me = { city: myCity, tz: MY_TZ };
+    const them = haveTheirs || partnerTz ? { city: partnerCity, tz: partnerTz } : null;
+    const base = {
+      seed: s.sid,
+      rows: s.poses,
+      images: null,
+      filtered: {},
+      when: Date.now(),
+      places: mineLeft ? { host: me, guest: them } : { host: them, guest: me }
+    };
+    let r;
+    if (s.one) {
+      // One picture per pose with both people in it.
+      const pics = [];
+      for (let k = 0; k < s.poses; k++) pics.push(await composeOne(s, k));
+      r = Object.assign(base, { solo: false, wide: true, left: pics, right: [] });
+    } else {
+      r = Object.assign(base, {
+        solo: !haveTheirs,
+        left: !haveTheirs ? s.mine : (mineLeft ? s.mine : s.theirs),
+        right: !haveTheirs ? [] : (mineLeft ? s.theirs : s.mine)
+      });
+    }
     document.body.classList.remove('shooting');
     cueEl.textContent = '';
     if (connState) $('sign').textContent = SIGNS[connState];
     $('dots').innerHTML = '';
-    const haveTheirs = s.theirs.some(Boolean);
-    const mineLeft = role !== 'guest';
-    result = {
-      seed: s.sid,
-      rows: s.poses,
-      solo: !haveTheirs,
-      left: !haveTheirs ? s.mine : (mineLeft ? s.mine : s.theirs),
-      right: !haveTheirs ? [] : (mineLeft ? s.theirs : s.mine),
-      images: null,
-      filtered: {}
-    };
+    result = r;
     history.unshift(result);
     if (history.length > 8) history.pop();
     showResult(true);
@@ -1626,6 +2398,8 @@
     pick('font', FONTS);
     if (typeof d.caption === 'string') o.caption = d.caption.replace(/[\u0000-\u001f]/g, '').slice(0, 28);
     if (typeof d.date === 'boolean') o.date = d.date;
+    if (typeof d.times === 'boolean') o.times = d.times;
+    if (typeof d.meet === 'string' && (d.meet === '' || /^\d{4}-\d{2}-\d{2}$/.test(d.meet))) o.meet = d.meet;
     return o;
   }
 
@@ -1821,10 +2595,13 @@
     const imgs = filteredImages(r, filterOf(look.filter));
     const font = FONTS.find((f) => f.id === look.font) || FONTS[0];
     const caption = look.caption.trim();
-    const hasText = !!caption || look.date;
+    const date = new Date(r.when || Date.now()).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+    const lines = [look.date ? date : '', timesLine(r), meetLine(r.when)].filter(Boolean);
+    const hasText = !!caption || lines.length > 0;
 
     const CW = 540, CH = 720, M = 48, GAP = 20;
-    const FOOT = hasText ? 200 : 70;
+    const CAP_H = caption ? 130 : 0, LINE_H = 50;
+    const FOOT = hasText ? 46 + CAP_H + lines.length * LINE_H + 24 : 70;
     const cellW = CW * (r.solo ? 1 : 2);
     const gc = look.layout === 'grid' ? 2 : 1;
     const gr = Math.ceil(r.rows / gc);
@@ -1856,15 +2633,14 @@
       g.fillStyle = 'rgba(128, 128, 128, .3)';
       g.fillRect(x, y, cellW, CH);
       const l = imgs.left[k];
-      if (l) g.drawImage(l, x, y, CW, CH);
+      if (l) g.drawImage(l, x, y, r.wide ? cellW : CW, CH);
       const rt = imgs.right[k];
       if (rt) g.drawImage(rt, x + CW, y, CW, CH);
       g.restore();
     }
 
-    // Caption and date in the space at the bottom.
+    // Caption, then small lines: the date, both times and places, the reunion countdown.
     const footTop = H - FOOT;
-    const date = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
     const textW = W - M * 2 - (look.stickers !== 'none' ? 200 : 0);
     g.fillStyle = paper.ink;
     g.textAlign = 'center';
@@ -1875,14 +2651,18 @@
         g.font = font.font(size);
         size -= 4;
       } while (g.measureText(caption).width > textW && size > 24);
-      g.fillText(caption, W / 2, footTop + FOOT * (look.date ? 0.4 : 0.5));
+      g.fillText(caption, W / 2, footTop + 46 + CAP_H / 2 - 14);
     }
-    if (look.date) {
-      g.globalAlpha = 0.75;
-      g.font = '500 ' + (caption ? 32 : 38) + 'px Onest, system-ui, sans-serif';
-      g.fillText(date, W / 2, footTop + FOOT * (caption ? 0.8 : 0.52));
+    lines.forEach((line, i) => {
+      let size = caption ? 32 : 36;
+      do {
+        g.font = '500 ' + size + 'px Onest, system-ui, sans-serif';
+        size -= 2;
+      } while (g.measureText(line).width > W - M * 2 && size > 16);
+      g.globalAlpha = 0.78;
+      g.fillText(line, W / 2, footTop + 46 + CAP_H + i * LINE_H + LINE_H / 2 - 18);
       g.globalAlpha = 1;
-    }
+    });
 
     // Stickers land in the same places on both screens, because they're placed
     // with a random generator seeded by the session.
@@ -1941,6 +2721,11 @@
     setRadio('font', look.font);
     if ($('caption').value !== look.caption) $('caption').value = look.caption;
     $('show-date').checked = look.date;
+    $('show-times').checked = look.times;
+    if ($('meet-date').value !== look.meet) $('meet-date').value = look.meet;
+    const ml = meetLine(Date.now());
+    $('meet-badge').hidden = !ml;
+    $('meet-badge').textContent = ml ? '💌 ' + ml : '';
     frame.style.setProperty('--live-filter', filterOf(look.filter).css);
     $('view-result').classList.toggle('layout-grid', look.layout === 'grid');
   }
@@ -1967,10 +2752,49 @@
   chips($('shapes'), 'shape', SHAPES);
   chips($('fonts'), 'font', FONTS);
   chips($('backgrounds'), 'bg', BACKGROUNDS);
+  chips($('blurs'), 'blur', BLUR_LEVELS);
+  chips($('modes'), 'mode', MODES);
+
   $('backgrounds').addEventListener('change', (e) => {
-    setBackground(e.target.value);
-    store.set('bg', e.target.value);
+    const id = e.target.value;
+    if (id === 'custom' && !FX.scenes.custom) {
+      // No photo yet: ask for one first.
+      setRadio('bg', FX.bg);
+      $('scene-file').click();
+      return;
+    }
+    setBackground(id);
+    store.set('bg', id);
+    $('scene-change').hidden = id !== 'custom';
     sendSettings();
+  });
+
+  $('scene-change').addEventListener('click', () => $('scene-file').click());
+  $('scene-file').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const url = await photoToScene(f);
+    if (!url || !(await setCustomScene(url))) { toast('That picture couldn\'t be opened. Try a JPEG or PNG.'); return; }
+    store.set('scene-photo', url);
+    shareCustomScene();
+    await setBackground('custom');
+    store.set('bg', 'custom');
+    $('scene-change').hidden = false;
+    sendSettings();
+  });
+
+  $('blurs').addEventListener('change', (e) => {
+    setBlur(Number(e.target.value));
+    store.set('blur', e.target.value);
+    sendSettings();
+  });
+
+  $('modes').addEventListener('change', (e) => {
+    setOneFrame(e.target.value === 'one');
+    store.set('mode', e.target.value);
+    sendSettings();
+    if (FX.one) toast('Drag yourself to move, pinch or scroll to change size ✋');
   });
 
   const LOOK_INPUTS = {
@@ -1985,6 +2809,8 @@
   $('custom-color').addEventListener('input', (e) => changeLook({ paper: e.target.value }));
   $('caption').addEventListener('input', (e) => changeLook({ caption: e.target.value }));
   $('show-date').addEventListener('change', (e) => changeLook({ date: e.target.checked }));
+  $('show-times').addEventListener('change', (e) => changeLook({ times: e.target.checked }));
+  $('meet-date').addEventListener('change', (e) => changeLook({ meet: e.target.value }));
 
   // Tabs on the result screen
   const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
@@ -2074,6 +2900,15 @@
   $('name-me').textContent = myName || 'You';
   $('booth-name').addEventListener('change', (e) => setMyName(e.target.value));
 
+  $('my-city').value = myCity;
+  $('my-city').placeholder = tzCity(MY_TZ) || 'Your city';
+  $('my-city').addEventListener('change', (e) => {
+    myCity = cleanCity(e.target.value) || tzCity(MY_TZ);
+    store.set('city', cleanCity(e.target.value));
+    e.target.value = myCity;
+    hello();
+  });
+
   // Fetch relay (TURN) servers if a credentials URL is set in config.js.
   async function loadIceServers() {
     if (!CFG.turnCredentialsUrl) return;
@@ -2116,7 +2951,7 @@
     }
     await loadIceServers();
     show('booth');
-    if (FX.bg !== 'none') setBackground(FX.bg, true);
+    ensureFx(true);
     tryHost(0);
   });
 
@@ -2241,6 +3076,13 @@
       const l = imgs.left[k], rt = imgs.right[k];
       if (!l && !rt) continue;
       const c = document.createElement('canvas');
+      if (r.wide) {
+        c.width = l.width || l.naturalWidth;
+        c.height = l.height || l.naturalHeight;
+        c.getContext('2d').drawImage(l, 0, 0);
+        out.push(c.toDataURL('image/jpeg', 0.92));
+        continue;
+      }
       c.width = SHOT_W * (r.solo ? 1 : 2);
       c.height = SHOT_H;
       const g = c.getContext('2d');
@@ -2370,7 +3212,17 @@
   setSfx(sfxOn);
   setSpeaker(true);
   applySettings({ poses, count, ideas: ideasOn });
-  setBackground(store.get('bg', 'none'), true);
+  setBlur(Math.min(3, Math.max(0, Number(store.get('blur', '0')) || 0)));
+  {
+    const saved = store.get('scene-photo', '');
+    if (saved.startsWith('data:image/jpeg;base64,')) setCustomScene(saved);
+  }
+  setOneFrame(store.get('mode', 'split') === 'one', true);
+  {
+    const bg = store.get('bg', 'none');
+    setBackground(bg === 'custom' && !store.get('scene-photo', '') ? 'none' : bg, true);
+    $('scene-change').hidden = FX.bg !== 'custom';
+  }
   lookToUI();
   optSummary();
 

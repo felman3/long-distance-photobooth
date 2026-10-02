@@ -129,9 +129,11 @@
   <!-- The booth -->
   <section class="view booth" id="view-booth" hidden>
     <p class="sign" id="sign">Booth open</p>
+    <p class="meet-badge" id="meet-badge" hidden></p>
 
     <div class="marquee" id="marquee">
       <div class="frame" id="frame">
+        <canvas class="stage" id="stage" width="1200" height="800" aria-label="You both in one picture"></canvas>
         <div class="half me" id="half-me">
           <video id="vid-me" autoplay playsinline muted></video>
           <span class="tag tag-me" id="tag-me"><span id="name-me">You</span><svg class="tag-muted" aria-label="Microphone off"><use href="#i-mic-off"/></svg></span>
@@ -160,6 +162,15 @@
         <button class="icon-btn" id="sfx" type="button" aria-pressed="true" title="Booth sounds"><svg><use href="#i-note"/></svg><span class="sr-only">Booth sounds</span></button>
       </div>
       <div class="reacts" id="reacts" role="group" aria-label="Send a reaction"></div>
+    </div>
+
+    <div class="arrange" id="arrange" hidden>
+      <p class="arrange-tip">✋ Drag yourself to move · pinch or scroll to resize</p>
+      <div class="arrange-btns">
+        <label class="size-field">Size <input type="range" id="size" min="50" max="160" value="100"></label>
+        <button class="btn btn-quiet btn-small" id="front" type="button">Bring me to front</button>
+        <button class="btn btn-quiet btn-small" id="place-reset" type="button">Reset</button>
+      </div>
     </div>
 
     <div class="dots" id="dots" aria-hidden="true"></div>
@@ -191,6 +202,10 @@
           <label for="booth-name">Your name</label>
           <input id="booth-name" type="text" maxlength="16" autocomplete="nickname" placeholder="You">
         </div>
+        <div class="field name-field">
+          <label for="my-city">Your city</label>
+          <input id="my-city" type="text" maxlength="24" autocomplete="address-level2" placeholder="Your city">
+        </div>
       </div>
 
       <fieldset class="chip-field">
@@ -199,8 +214,20 @@
       </fieldset>
 
       <fieldset class="chip-field">
-        <legend>Same place <span class="opt">(swap both backgrounds for one scene, so you look side by side)</span></legend>
+        <legend>How you stand</legend>
+        <div class="chips" id="modes"></div>
+      </fieldset>
+
+      <fieldset class="chip-field">
+        <legend>Background <span class="opt">(you both appear in the same place)</span></legend>
         <div class="chips" id="backgrounds"></div>
+        <button class="btn btn-quiet btn-small scene-change" id="scene-change" type="button" hidden>Change photo</button>
+        <input type="file" id="scene-file" accept="image/*" hidden>
+      </fieldset>
+
+      <fieldset class="chip-field">
+        <legend>Background blur <span class="opt">(like portrait mode)</span></legend>
+        <div class="chips" id="blurs"></div>
       </fieldset>
 
       <div class="go-row">
@@ -272,6 +299,11 @@
           <div class="chips" id="fonts"></div>
         </fieldset>
         <label class="check"><input type="checkbox" id="show-date" checked><span>Print the date</span></label>
+        <label class="check"><input type="checkbox" id="show-times" checked><span>Print both our times and cities</span></label>
+        <div class="field">
+          <label for="meet-date">Next time we meet <span class="opt">(prints a countdown)</span></label>
+          <input id="meet-date" type="date">
+        </div>
       </div>
 
       <div class="actions">
