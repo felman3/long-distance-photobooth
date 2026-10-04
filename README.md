@@ -24,6 +24,10 @@ Two people in different places open the same link, see and hear each other live,
 
 It is a plain static site: no build step, no backend, no database, no accounts.
 
+## Also in this repository: Splash Royale
+
+The `game/` folder holds **Splash Royale**, a free water-balloon battle royale for up to 12 players per room that runs in the browser (bots fill empty spots). Once this site is deployed it's at `your-site.vercel.app/game/`. See [`game/README.md`](game/README.md) for how to play, deploy it as its own site, and how it works.
+
 ## Deploy to Vercel
 
 **With GitHub (recommended)**
